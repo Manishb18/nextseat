@@ -17,7 +17,7 @@ A 2-person browser app for watching local movie files together via WebRTC. The m
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+ and [pnpm](https://pnpm.io)
+- Node.js 20.19+ or 22.12+ and [pnpm](https://pnpm.io)
 - Copy `.env.example` → `.env` and fill in TURN credentials if needed
 
 ### Backend
@@ -97,6 +97,7 @@ curl http://localhost:8000/api/health
 | `FORCE_RELAY` | `false` | Set `true` to force all connections through TURN (for testing) |
 | `ROOM_CREATE_LIMIT` | `10` | Max room creations per IP per minute |
 | `ROOM_JOIN_LIMIT` | `20` | Max join attempts per IP per minute |
+| `TRUSTED_PROXY_NETWORKS` | Private network ranges | Networks whose reverse proxies may provide the client IP for rate limiting |
 
 ## Docker Deployment
 

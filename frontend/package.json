@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "node --experimental-strip-types --test tests/peer.test.ts tests/signaling.test.ts tests/playback.test.ts",
+    "test:integration": "node tests/signaling.integration.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },

@@ -24,6 +24,11 @@ class Settings:
     room_create_limit: int = field(default_factory=lambda: int(os.getenv("ROOM_CREATE_LIMIT", "10")))  # per IP per minute
     room_join_limit: int = field(default_factory=lambda: int(os.getenv("ROOM_JOIN_LIMIT", "20")))  # per IP per minute
 
+    # Only honor forwarded client IPs from private-network reverse proxies.
+    trusted_proxy_networks: list[str] = field(default_factory=lambda: _csv(
+        "TRUSTED_PROXY_NETWORKS", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,::1/128,fc00::/7"
+    ))
+
     # Room cleanup
     room_empty_timeout: int = 60  # seconds
 

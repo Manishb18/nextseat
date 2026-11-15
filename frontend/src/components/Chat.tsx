@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react';
+import Icon from './Icon';
 
 interface ChatEntry {
   id: number;
@@ -11,24 +12,27 @@ interface ChatProps {
   myName: string;
   onSend: (text: string) => void;
   messages: ChatEntry[];
+  canSend: boolean;
 }
 
-export default function Chat({ myName: _myName, onSend, messages }: ChatProps) {
+export default function Chat({ myName: _myName, onSend, messages, canSend }: ChatProps) {
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
-  const prevLenRef = useRef(0);
+  const prevLastIdRef = useRef(0);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-    if (!open && messages.length > prevLenRef.current) {
-      setUnread((u) => u + (messages.length - prevLenRef.current));
+    const latestId = messages.at(-1)?.id ?? 0;
+    if (!open && latestId > prevLastIdRef.current) {
+      const newMessages = messages.filter((message) => message.id > prevLastIdRef.current).length;
+      setUnread((u) => u + newMessages);
     }
-    prevLenRef.current = messages.length;
+    prevLastIdRef.current = latestId;
   }, [messages, open]);
 
   function handleOpen() {
@@ -51,8 +55,9 @@ export default function Chat({ myName: _myName, onSend, messages }: ChatProps) {
         onClick={() => (open ? setOpen(false) : handleOpen())}
         className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-lg hover:bg-gray-600"
         title="Chat"
+        aria-label={open ? 'Close chat' : 'Open chat'}
       >
-        💬
+        <Icon name="chat" />
         {unread > 0 && (
           <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs font-bold">
             {unread}
@@ -66,11 +71,12 @@ export default function Chat({ myName: _myName, onSend, messages }: ChatProps) {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-gray-700 px-3 py-2">
             <span className="text-sm font-semibold">Chat</span>
-            <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">✕</button>
+            <button onClick={() => setOpen(false)} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white" aria-label="Close chat"><Icon name="close" size={16} /></button>
           </div>
 
           {/* Messages */}
           <div ref={listRef} className="flex flex-col gap-2 overflow-y-auto p-3 h-56">
+            {!canSend && <p role="status" className="text-center text-xs text-yellow-300">Connecting chat…</p>}
             {messages.length === 0 ? (
               <p className="text-center text-xs text-gray-500 mt-auto">No messages yet</p>
             ) : (
@@ -97,6 +103,7 @@ export default function Chat({ myName: _myName, onSend, messages }: ChatProps) {
             <input
               type="text"
               value={text}
+              disabled={!canSend}
               onChange={(e) => setText(e.target.value)}
               maxLength={500}
               placeholder="Type a message…"
@@ -104,7 +111,7 @@ export default function Chat({ myName: _myName, onSend, messages }: ChatProps) {
             />
             <button
               type="submit"
-              disabled={!text.trim()}
+              disabled={!canSend || !text.trim()}
               className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold hover:bg-blue-500 disabled:opacity-50"
             >
               Send

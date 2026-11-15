@@ -29,7 +29,7 @@ export async function getLocalMedia(
   }
 
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: video ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+    video: video ? { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 24, max: 30 } } : false,
     audio: audio ? AUDIO_CONSTRAINTS : false,
   });
 

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import random
-import string
+import secrets
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -24,12 +23,15 @@ class Peer:
     ws: WebSocket
     name: str
     peer_id: str
+    client_id: str = ''
 
 
 @dataclass
 class Room:
     code: str
     peers: list[Peer] = field(default_factory=list)
+    owner_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
+    owner_peer_id: str | None = None
     created_at: float = field(default_factory=time.time)
     cleanup_task: asyncio.Task[None] | None = field(default=None, repr=False)
 
@@ -56,7 +58,7 @@ class RoomManager:
     def _generate_code(self) -> str:
         """Generate a unique 6-character room code."""
         for _ in range(100):
-            code = "".join(random.choices(ROOM_CODE_CHARS, k=ROOM_CODE_LENGTH))
+            code = "".join(secrets.choice(ROOM_CODE_CHARS) for _ in range(ROOM_CODE_LENGTH))
             if code not in self._rooms:
                 return code
         raise RuntimeError("Failed to generate unique room code")
@@ -78,13 +80,15 @@ class RoomManager:
         self._check_rate(self._create_log, ip, settings.room_create_limit)
         code = self._generate_code()
         self._rooms[code] = Room(code=code)
+        # Rooms that are created but never joined should expire too.
+        self._schedule_cleanup(code)
         return code
 
     def get_room(self, code: str) -> Room | None:
         return self._rooms.get(code)
 
-    def join_room(self, code: str, ws: WebSocket, name: str, ip: str) -> tuple[str, bool]:
-        """Join a room. Returns (peer_id, is_polite).
+    def join_room(self, code: str, ws: WebSocket, name: str, ip: str, client_id: str = '', owner_token: str = '') -> tuple[str, bool, bool]:
+        """Join a room. Returns (peer_id, is_polite, reconnected).
 
         The first joiner is impolite, the second is polite
         (perfect negotiation convention).
@@ -96,6 +100,14 @@ class RoomManager:
         room = self._rooms.get(code)
         if room is None:
             raise RoomNotFound(f"Room {code} not found")
+        if client_id:
+            for index, peer in enumerate(room.peers):
+                if peer.client_id == client_id:
+                    room.peers[index] = Peer(ws=ws, name=name, peer_id=peer.peer_id, client_id=client_id)
+                    if owner_token and secrets.compare_digest(room.owner_token, owner_token):
+                        room.owner_peer_id = peer.peer_id
+                    return peer.peer_id, index == 1, True
+
         if len(room.peers) >= 2:
             raise RoomFull(f"Room {code} is full")
 
@@ -104,10 +116,31 @@ class RoomManager:
             room.cleanup_task.cancel()
             room.cleanup_task = None
 
-        peer_id = f"peer-{len(room.peers)}"
+        peer_id = f"peer-{secrets.token_hex(4)}"
         is_polite = len(room.peers) == 1  # Second joiner is polite
-        room.peers.append(Peer(ws=ws, name=name, peer_id=peer_id))
-        return peer_id, is_polite
+        if owner_token and secrets.compare_digest(room.owner_token, owner_token):
+            room.owner_peer_id = peer_id
+        room.peers.append(Peer(ws=ws, name=name, peer_id=peer_id, client_id=client_id))
+        return peer_id, is_polite, False
+
+    def delete_room(self, code: str, ws: WebSocket) -> list[Peer] | None:
+        """Delete a room only when requested by the peer holding its owner slot."""
+        room = self._rooms.get(code)
+        if room is None or room.owner_peer_id is None:
+            return None
+        requester = next((peer for peer in room.peers if peer.ws is ws), None)
+        if requester is None or requester.peer_id != room.owner_peer_id:
+            return None
+        self._rooms.pop(code, None)
+        if room.cleanup_task and not room.cleanup_task.done():
+            room.cleanup_task.cancel()
+        return list(room.peers)
+
+    def get_peer_by_client(self, code: str, client_id: str) -> Peer | None:
+        room = self._rooms.get(code)
+        if room is None:
+            return None
+        return next((peer for peer in room.peers if peer.client_id == client_id), None)
 
     def leave_room(self, code: str, ws: WebSocket) -> Peer | None:
         """Remove a peer from the room. Returns the removed peer or None."""
@@ -125,7 +158,7 @@ class RoomManager:
             room.peers.remove(removed)
 
         # Schedule cleanup if room is now empty
-        if not room.peers:
+        if removed and not room.peers:
             self._schedule_cleanup(code)
 
         return removed

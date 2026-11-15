@@ -1,33 +1,9 @@
-# Watch Party — Task Tracker
-
-| Task | Description | Status |
-|------|-------------|--------|
-| 0.1 | Backend project setup | done |
-| 0.2 | Frontend project setup | done |
-| 0.3 | .env.example and README | done |
-| 1.1 | Room manager | done |
-| 1.2 | REST endpoints | done |
-| 1.3 | WebSocket signaling | done |
-| 1.4 | Frontend join flow | done |
-| 1.5 | Verify Phase 1 | done |
-| 2.1 | Perfect negotiation peer | done |
-| 2.2 | Camera/mic toggles | done |
-| 2.3 | Room UI | done |
-| 2.4 | Verify Phase 2 | done |
-| 3.1 | Movie file validation | done |
-| 3.2 | captureStream + tracks | done |
-| 3.3 | Video sender tuning | done |
-| 3.4 | MoviePlayer viewer | done |
-| 3.5 | Share/Stop UI | done |
-| 3.6 | Verify Phase 3 | done |
-| 4.1 | Playback control | done |
-| 4.2 | Quality selector | done |
-| 4.3 | Connection badge | done |
-| 4.4 | ICE restart | done |
-| 4.5 | Text chat | done |
-| 4.6 | Verify Phase 4 | done |
-| 5.1 | Dockerfile | done |
-| 5.2 | docker-compose + Caddy | done |
-| 5.3 | Static file serving | done |
-| 5.4 | README finalization | done |
-| 5.5 | Verify Phase 5 | done |
+| task | status | notes |
+| --- | --- | --- |
+| Trace room, signaling, camera, movie, and recovery flows | complete | Confirmed candidate ordering, media lifecycle, and reconnect gaps in source |
+| Repair camera and microphone stream behavior | complete | Reuse sender tracks safely, release old tracks, update remote mute state, and play audio-only streams |
+| Repair movie playback, replay, and controls | complete | Stable receiver stream ID across replaceTrack, preserve receiver on stop, avoid re-capturing on rerender, and separate viewer live time from the source-file clock |
+| Fix camera stop/restart and viewer controls | complete | Honor explicit remote camera toggles, keep one video element mounted across placeholder transitions, report control-channel readiness, and add receiver mute/play/pause controls |
+| Add signaling and peer recovery | complete | ICE candidate buffering, guarded sends, bounded socket retry, same-tab identity, and peer-connection rebuild |
+| Fix room lifecycle and diagnostics | complete | Expire never-joined rooms, preserve peer identity on socket replacement, and report selected ICE candidate |
+| Verify implementation | complete | Frontend build, 7 unit tests, lint, and live two-peer WebSocket reconnect integration passed; browser camera UI test unavailable |

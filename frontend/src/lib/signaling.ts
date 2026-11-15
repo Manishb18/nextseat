@@ -6,10 +6,14 @@
  */
 
 export type SignalingEvent =
-  | { type: "joined"; peerId: string; polite: boolean; peers: Array<{ peerId: string; name: string }> }
+  | { type: "joined"; peerId: string; polite: boolean; isCreator: boolean; peers: Array<{ peerId: string; name: string }> }
   | { type: "peer-joined"; name: string; peerId: string }
   | { type: "peer-left"; peerId: string }
+  | { type: "peer-reconnected"; name: string; peerId: string }
+  | { type: "reconnecting" }
   | { type: "room-full" }
+  | { type: "room-deleted" }
+  | { type: "delete-denied" }
   | { type: "signal"; data: Record<string, unknown> }
   | { type: "error"; message: string };
 
@@ -18,34 +22,117 @@ type Listener = (event: SignalingEvent) => void;
 export class SignalingClient {
   private ws: WebSocket | null = null;
   private listeners: Listener[] = [];
+  private code = '';
+  private name = '';
+  private ownerToken = '';
+  private clientId = crypto.randomUUID();
+  private retryTimer: number | null = null;
+  private heartbeatTimer: number | null = null;
+  private retryAttempt = 0;
+  private stopped = true;
 
   /** Connect to the signaling server for a room code. */
-  connect(code: string, name: string): void {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws/${code}`;
-    this.ws = new WebSocket(url);
+  connect(code: string, name: string, ownerToken = ''): void {
+    this.code = code;
+    this.name = name;
+    this.ownerToken = ownerToken;
+    this.stopped = false;
+    this.retryAttempt = 0;
+    if (this.heartbeatTimer !== null) window.clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = window.setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        try { this.ws.send(JSON.stringify({ type: 'ping' })); } catch { /* Socket is closing. */ }
+      }
+    }, 5 * 60 * 1000);
+    this.openSocket();
+  }
 
-    this.ws.onopen = () => {
-      this.ws?.send(JSON.stringify({ type: "join", name }));
+  private openSocket(): void {
+    if (this.stopped) return;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${protocol}//${window.location.host}/ws/${this.code}`;
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      this.scheduleReconnect();
+      return;
+    }
+    this.ws = socket;
+
+    socket.onopen = () => {
+      if (this.ws !== socket || this.stopped) return;
+      socket.send(JSON.stringify({ type: "join", name: this.name, clientId: this.clientId, ownerToken: this.ownerToken }));
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data) as SignalingEvent;
+        if ((msg as { type?: string }).type === 'pong') return;
+        if (msg.type === 'joined') this.retryAttempt = 0;
+        if (msg.type === 'room-deleted') this.stopped = true;
+        if (msg.type === 'room-full' || msg.type === 'error') this.stopped = true;
         this.listeners.forEach((fn) => fn(msg));
       } catch {
         // Ignore malformed messages
       }
     };
 
-    this.ws.onclose = () => {
-      // Could emit a disconnect event if needed
+    socket.onclose = () => {
+      if (this.ws !== socket || this.stopped) return;
+      this.ws = null;
+      this.listeners.forEach((fn) => fn({ type: 'reconnecting' }));
+      this.scheduleReconnect();
     };
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopped || this.retryTimer !== null) return;
+    const delay = Math.min(500 * 2 ** this.retryAttempt, 8_000);
+    this.retryAttempt += 1;
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = null;
+      this.openSocket();
+    }, delay);
+  }
+
+  /** Force a fresh signaling session; useful when the media path is stuck. */
+  reconnect(): void {
+    if (this.stopped) return;
+    this.listeners.forEach((fn) => fn({ type: 'reconnecting' }));
+    const socket = this.ws;
+    this.ws = null;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+    if (this.retryTimer !== null) {
+      window.clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.retryAttempt = 0;
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = null;
+      this.openSocket();
+    }, 0);
   }
 
   /** Send a signaling message (SDP offer/answer or ICE candidate). */
   sendSignal(data: Record<string, unknown>): void {
-    this.ws?.send(JSON.stringify({ type: "signal", data }));
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    try {
+      this.ws.send(JSON.stringify({ type: "signal", data }));
+    } catch {
+      // A socket can close between the readyState check and send().
+    }
+  }
+
+  /** Ask the server to end the room; the server verifies the creator token. */
+  deleteRoom(): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    try {
+      this.ws.send(JSON.stringify({ type: 'delete-room' }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Register an event listener. */
@@ -58,8 +145,17 @@ export class SignalingClient {
 
   /** Send a leave message and close the connection. */
   disconnect(): void {
+    this.stopped = true;
+    if (this.heartbeatTimer !== null) {
+      window.clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    if (this.retryTimer !== null) {
+      window.clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "leave" }));
+      try { this.ws.send(JSON.stringify({ type: "leave" })); } catch { /* socket is closing */ }
     }
     this.ws?.close();
     this.ws = null;

@@ -38,7 +38,7 @@ Inside `startMovieStream`, the nested `async function setupTrack(...)` closes ov
 | Camera toggle on (2nd+) | `pm.addTrack(newTrack, stream)` → new sender | `pm.replaceTrack(existingSender, newTrack)` |
 | Mic toggle | Same pattern as camera | Same pattern as camera |
 | Movie stop | `removeTrack()` all senders, clear array | `replaceTrack(null)` on video+audio senders, **keep refs alive** |
-| Movie restart | `addTrack()` new stream → new streamId → `ontrack` may not fire | `replaceTrack(newTrack)` on existing senders → no new transceiver → `ontrack` fires reliably |
+| Movie restart | `addTrack()` new stream → new streamId → `ontrack` may not fire | Keep the sender and receiver stream alive, retain the negotiated stream ID, and handle the receiver track's unmute event |
 | Movie sender refs | `movieSendersRef: RTCRtpSender[]` | `movieVideoSenderRef`, `movieAudioSenderRef` (single refs) |
 | Race-fix useEffect | Present (buggy) | **Removed** — no longer needed |
 | TS18047 fix | `pm.addTrack(...)` inside async closure (null error) | Captured as `const pmSafe = pm` before closure |
@@ -83,6 +83,8 @@ python -c "from app.main import app; print('OK')"  → OK
 ---
 
 ## Known Remaining Risk
+
+**Correction from the follow-up audit:** `RTCRtpSender.replaceTrack()` does not cause a new remote `ontrack` event and does not replace the negotiated remote stream ID. The viewer must keep its existing receiver stream mounted and listen for the track to unmute after replay. The earlier claim above that `ontrack` fires reliably after `replaceTrack()` was incorrect.
 
 `captureStream()` on Chrome returns a `MediaStream` with potentially zero tracks until `play()` is called. The `stream.onaddtrack` handler in `startMovieStream` catches late-arriving tracks. On replay (second share), `replaceTrack` on the video sender is called in `onaddtrack` — this should work but hasn't been tested on a slow machine where `play()` is very delayed.
 

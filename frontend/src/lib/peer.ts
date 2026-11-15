@@ -33,6 +33,8 @@ export class PeerManager {
   private signaling: SignalingClient;
   private makingOffer = false;
   private ignoreOffer = false;
+  private settingRemoteAnswer = false;
+  private pendingCandidates: RTCIceCandidateInit[] = [];
 
   /** The control data channel (created by impolite peer; received by polite peer). */
   controlChannel: RTCDataChannel | null = null;
@@ -115,13 +117,31 @@ export class PeerManager {
         // Collision: we're making an offer and received one simultaneously.
         const offerCollision =
           description.type === 'offer' &&
-          (this.makingOffer || this.pc.signalingState !== 'stable');
+          (this.makingOffer ||
+            (this.pc.signalingState !== 'stable' && !this.settingRemoteAnswer));
 
         this.ignoreOffer = !this.polite && offerCollision;
-        if (this.ignoreOffer) return; // Impolite ignores the collision
+        if (this.ignoreOffer) {
+          this.pendingCandidates = [];
+          return; // Impolite ignores the offer and its candidates
+        }
 
         // Polite peer: roll back own offer and accept remote offer
-        await this.pc.setRemoteDescription(description);
+        this.settingRemoteAnswer = description.type === 'answer';
+        try {
+          await this.pc.setRemoteDescription(description);
+        } finally {
+          this.settingRemoteAnswer = false;
+        }
+
+        // ICE can arrive before the SDP message over a newly established or
+        // restarted signaling connection. Applying it early throws and loses
+        // the candidate permanently, so hold it until the remote SDP exists.
+        const pending = this.pendingCandidates;
+        this.pendingCandidates = [];
+        for (const candidate of pending) {
+          await this.pc.addIceCandidate(candidate);
+        }
 
         if (description.type === 'offer') {
           await this.pc.setLocalDescription(); // implicitly creates answer
@@ -129,6 +149,10 @@ export class PeerManager {
         }
       } else if (data['candidate']) {
         const candidate = data['candidate'] as RTCIceCandidateInit;
+        if (!this.pc.remoteDescription) {
+          this.pendingCandidates.push(candidate);
+          return;
+        }
         try {
           await this.pc.addIceCandidate(candidate);
         } catch (err) {
@@ -170,6 +194,7 @@ export class PeerManager {
 
   /** Close and clean up the peer connection. */
   close(): void {
+    this.pendingCandidates = [];
     this.pc.close();
   }
 

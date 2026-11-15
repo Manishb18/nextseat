@@ -1,3 +1,5 @@
+import Icon from './Icon';
+
 interface ControlsProps {
   cameraOn: boolean;
   micOn: boolean;
@@ -31,22 +33,26 @@ export default function Controls({
       <button
         onClick={onToggleCamera}
         title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
+        aria-label={cameraOn ? 'Turn off camera' : 'Turn on camera'}
+        aria-pressed={cameraOn}
         className={`flex h-10 w-10 items-center justify-center rounded-full text-lg transition ${
           cameraOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-700 hover:bg-red-600'
         }`}
       >
-        {cameraOn ? '📷' : '🚫📷'}
+        <Icon name={cameraOn ? 'camera' : 'camera-off'} size={19} />
       </button>
 
       {/* Mic toggle */}
       <button
         onClick={onToggleMic}
-        title={micOn ? 'Mute mic' : 'Unmute mic'}
+        title={micOn ? 'Mute microphone' : 'Unmute microphone'}
+        aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
+        aria-pressed={micOn}
         className={`flex h-10 w-10 items-center justify-center rounded-full text-lg transition ${
           micOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-700 hover:bg-red-600'
         }`}
       >
-        {micOn ? '🎤' : '🔇'}
+        <Icon name={micOn ? 'microphone' : 'microphone-off'} size={19} />
       </button>
 
       {/* Divider */}
@@ -58,7 +64,7 @@ export default function Controls({
           onClick={onStopSharing}
           className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
         >
-          ⏹ Stop Sharing
+          <span className="inline-flex items-center gap-2"><Icon name="stop" size={16} /> Stop sharing</span>
         </button>
       ) : (
         <button
@@ -67,7 +73,7 @@ export default function Controls({
           title={canShareMovie ? 'Share a movie file' : 'Use Chrome or Edge on desktop to share movies'}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          🎬 Share a Movie
+          <span className="inline-flex items-center gap-2"><Icon name="film" size={16} /> Share a movie</span>
         </button>
       )}
 

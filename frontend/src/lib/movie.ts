@@ -54,6 +54,8 @@ export function validateMovieFile(file: File): Promise<MovieValidationResult> {
     document.body.appendChild(video);
 
     const cleanup = () => {
+      video.onerror = null;
+      video.onloadedmetadata = null;
       URL.revokeObjectURL(url);
       video.remove();
     };
@@ -159,8 +161,8 @@ export async function applyQualityToSender(
 
   const enc = params.encodings[0];
   enc.maxBitrate = maxBitrate;
-  // degradationPreference lives on the encoding in some browsers, use type assertion
-  (enc as RTCRtpEncodingParameters & { degradationPreference?: string }).degradationPreference = 'maintain-framerate';
+  (params as RTCRtpSendParameters & { degradationPreference?: RTCDegradationPreference })
+    .degradationPreference = 'maintain-framerate';
 
   // Scale down only if source is larger than target
   if (sourceHeight > targetHeight) {

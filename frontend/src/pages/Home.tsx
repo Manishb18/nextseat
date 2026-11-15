@@ -9,7 +9,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const canCreate = name.trim().length > 0;
-  const canJoin = name.trim().length > 0 && joinCode.trim().length > 0;
+  const canJoin = name.trim().length > 0 && joinCode.trim().length === 6;
 
   async function handleCreate() {
     if (!canCreate) return;
@@ -21,8 +21,9 @@ export default function Home() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error === 'rate_limited' ? 'Too many rooms created. Wait a moment.' : 'Failed to create room');
       }
-      const { code } = await res.json() as { code: string };
-      navigate(`/r/${code}`, { state: { name: name.trim() } });
+      const { code, ownerToken } = await res.json() as { code: string; ownerToken: string };
+      try { sessionStorage.setItem(`watch-party-owner:${code}`, ownerToken); } catch { /* Router state still works in this tab. */ }
+      navigate(`/r/${code}`, { state: { name: name.trim(), ownerToken } });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create room');
     } finally {
@@ -99,7 +100,8 @@ export default function Home() {
               type="text"
               maxLength={6}
               value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-HJ-KM-NP-Z2-9]/g, '').slice(0, 6))}
+              aria-label="Six-character room code"
               placeholder="ROOM CODE"
               className="flex-1 rounded-lg bg-gray-800 px-4 py-2.5 font-mono text-lg tracking-widest text-white placeholder-gray-500 uppercase focus:outline-none focus:ring-2 focus:ring-green-500"
             />

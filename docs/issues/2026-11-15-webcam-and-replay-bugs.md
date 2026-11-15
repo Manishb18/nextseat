@@ -23,7 +23,7 @@ setRemoteStream(null);   // ← WIPES camera stream too!
 
 Any camera `MediaStream` that happened to arrive around the same time as a movie `stream-meta` signal gets nulled out. Even without the race, there's only one `remoteStream` slot — camera and movie share it, so whichever arrives second overwrites the first.
 
-**Additionally**, the camera toggle used `addTrack` / `removeTrack` on every toggle. `removeTrack` triggers renegotiation (a new offer/answer), and `replaceTrack(null)` is the correct low-overhead alternative. Without renegotiation the remote `ontrack` does not reliably re-fire.
+**Additionally**, the camera toggle used `addTrack` / `removeTrack` on every toggle. Repeated removal/addition can renegotiate unnecessarily and leave the viewer UI stale. `replaceTrack(null)` is the low-overhead option, but the remote receiver track remains in its stream and must be observed through its `mute` / `unmute` events.
 
 ### Affected files
 - `frontend/src/pages/Room.tsx` — `ontrack` handler, camera toggle handlers
@@ -46,7 +46,7 @@ On **restart**, `startMovieStream` calls `captureVideoStream()` → new `MediaSt
 
 The WebRTC spec says `ontrack` fires on the remote peer **only for new transceivers** (first `addTrack`). When the same peer connection reuses an existing transceiver slot (which the browser does after `removeTrack + addTrack`), the remote `ontrack` **may not fire again**. The viewer's `setViewerMovieStream` callback is therefore never called for the replay, so the state stays stale.
 
-**Fix approach**: Keep the senders alive across stop/start cycles. On stop, `replaceTrack(null)` to mute. On restart, `replaceTrack(newTrack)` to resume — no renegotiation, no new transceiver, `ontrack` fires reliably for the replaced track.
+**Fix approach**: Keep the sender and receiver stream alive across stop/start cycles. On stop, `replaceTrack(null)` mutes the receiver track. On restart, `replaceTrack(newTrack)` resumes that same receiver track. `replaceTrack` does **not** fire another `ontrack` event and does not change the stream ID originally negotiated, so the viewer must retain the receiver stream and route it using a stable ID.
 
 ### Affected files
 - `frontend/src/pages/Room.tsx` — `startMovieStream`, `handleStopSharing`, sender refs
