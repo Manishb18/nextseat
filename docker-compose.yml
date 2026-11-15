@@ -1,0 +1,33 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8000"
+    environment:
+      - STUN_URLS=${STUN_URLS:-stun:stun.l.google.com:19302}
+      - TURN_URLS=${TURN_URLS:-}
+      - TURN_USERNAME=${TURN_USERNAME:-}
+      - TURN_CREDENTIAL=${TURN_CREDENTIAL:-}
+      - FORCE_RELAY=${FORCE_RELAY:-false}
+      - ROOM_CREATE_LIMIT=${ROOM_CREATE_LIMIT:-10}
+      - ROOM_JOIN_LIMIT=${ROOM_JOIN_LIMIT:-20}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .rooms import room_manager, RoomFull, RoomNotFound, RateLimited
@@ -47,7 +51,6 @@ async def create_room(request: Request) -> dict:
     try:
         code = room_manager.create_room(ip)
     except RateLimited:
-        from fastapi.responses import JSONResponse
         return JSONResponse({"error": "rate_limited"}, status_code=429)
     return {"code": code}
 
@@ -142,7 +145,7 @@ async def signaling(ws: WebSocket, code: str) -> None:
             msg_type = msg.get("type")
 
             if msg_type == "signal":
-                # Relay signaling data to the other peer
+                # Relay signaling data (SDP, ICE, or stream-meta) to the other peer
                 other = room_manager.get_other_peer(code, ws)
                 if other:
                     try:
@@ -165,3 +168,34 @@ async def signaling(ws: WebSocket, code: str) -> None:
                     await other.ws.send_json({"type": "peer-left", "peerId": removed.peer_id})
                 except Exception:
                     pass
+
+
+# ── Static file serving (production) ──────────────────────────────
+# Serve the built Vite frontend from ../frontend/dist (when running from
+# inside the Docker container the path is /app/frontend/dist).
+# In development, Vite serves its own files; this block is a no-op.
+
+_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
+if not _DIST.exists():
+    # Try Docker layout: /app/frontend/dist
+    _DIST = Path("/app/frontend/dist")
+
+if _DIST.exists():
+    _INDEX = _DIST / "index.html"
+
+    # Mount /assets directly
+    app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+    # Serve favicon and other root-level static files
+    @app.get("/favicon.svg")
+    async def favicon() -> FileResponse:
+        return FileResponse(str(_DIST / "favicon.svg"))
+
+    # SPA fallback: any path not matched above returns index.html
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str) -> FileResponse:  # noqa: ARG001
+        return FileResponse(str(_INDEX))
+
+    logger.info(f"Serving frontend from {_DIST}")
+else:
+    logger.info("No frontend/dist found — running in API-only mode (use Vite for dev)")

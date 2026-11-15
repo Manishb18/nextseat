@@ -1,0 +1,23 @@
+# Replace YOUR_DOMAIN with your actual domain, e.g. watchparty.example.com
+# For local testing without a domain, see the README.
+YOUR_DOMAIN {
+    # Automatic HTTPS via Let's Encrypt
+    tls {
+        # Caddy handles certificate issuance automatically
+    }
+
+    # WebSocket upgrade for signaling
+    @ws {
+        path /ws/*
+    }
+    reverse_proxy @ws app:8000 {
+        transport http {
+            keepalive 30s
+        }
+        header_up Connection "Upgrade"
+        header_up Upgrade "websocket"
+    }
+
+    # All other traffic (API + static)
+    reverse_proxy app:8000
+}
