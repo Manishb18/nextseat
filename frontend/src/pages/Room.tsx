@@ -2,10 +2,18 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { SignalingClient } from '../lib/signaling';
 import { PeerManager, type IceConfig } from '../lib/peer';
-import { getLocalMedia, stopStream, setTrackEnabled } from '../lib/media';
-import { onControl, sendControl } from '../lib/controls';
+import { getLocalMedia, stopStream } from '../lib/media';
+import { onControl, sendControl, type ControlMessage } from '../lib/controls';
+import {
+  validateMovieFile,
+  isCaptureStreamSupported,
+  captureVideoStream,
+  applyQualityToSender,
+  type Quality,
+} from '../lib/movie';
 import CameraTile from '../components/CameraTile';
 import Controls from '../components/Controls';
+import MoviePlayer from '../components/MoviePlayer';
 
 interface LocationState {
   name?: string;
@@ -16,17 +24,6 @@ interface PeerInfo {
   name: string;
 }
 
-type Quality = '480p' | '720p' | '1080p';
-
-/** Check if captureStream is available in this browser. */
-function canCaptureStream(): boolean {
-  const proto = HTMLMediaElement.prototype as HTMLMediaElement & {
-    mozCaptureStream?: () => MediaStream;
-  };
-  return typeof proto.captureStream === 'function' ||
-    typeof proto.mozCaptureStream === 'function';
-}
-
 export default function Room() {
   const { code } = useParams<{ code: string }>();
   const location = useLocation();
@@ -34,34 +31,46 @@ export default function Room() {
   const state = location.state as LocationState | null;
   const myName = state?.name ?? 'Guest';
 
-  // Connection state
+  // Connection
   const [status, setStatus] = useState<'connecting' | 'connected' | 'full' | 'error'>('connecting');
   const [connState, setConnState] = useState<RTCPeerConnectionState>('new');
   const [errorMsg, setErrorMsg] = useState('');
   const [peers, setPeers] = useState<PeerInfo[]>([]);
   const [peerName, setPeerName] = useState('');
 
-  // Media state
+  // Camera / mic
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [remoteCamHidden, setRemoteCamHidden] = useState(false);
 
-  // Movie state
+  // Movie — streamer
   const [isStreaming, setIsStreaming] = useState(false);
+  const [movieSrc, setMovieSrc] = useState<string>('');
+  const [movieError, setMovieError] = useState('');
+  const [movieHelp, setMovieHelp] = useState('');
   const [quality, setQuality] = useState<Quality>('720p');
-  const movieSupported = canCaptureStream();
 
-  // Refs for mutable objects that shouldn't trigger re-renders
+  // Movie — viewer
+  const [viewerMovieStream, setViewerMovieStream] = useState<MediaStream | null>(null);
+  const [movieStreamId, setMovieStreamId] = useState<string>('');   // from stream-meta
+  const [peerIsStreaming, setPeerIsStreaming] = useState(false);
+
+  const movieSupported = isCaptureStreamSupported();
+
+  // Refs
   const sigRef = useRef<SignalingClient | null>(null);
   const peerRef = useRef<PeerManager | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const camSenderRef = useRef<RTCRtpSender | null>(null);
   const micSenderRef = useRef<RTCRtpSender | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
+  const streamerVideoRef = useRef<HTMLVideoElement | null>(null);    // streamer's local player
+  const movieSendersRef = useRef<RTCRtpSender[]>([]);                // senders for movie tracks
+  const viewerVideoRef = useRef<HTMLVideoElement | null>(null);      // viewer's player
 
-  // ── Setup signaling + peer connection ──────────────────────────────
+  // ── Peer setup ──────────────────────────────────────────────────
 
   useEffect(() => {
     if (!code || !state?.name) {
@@ -72,56 +81,60 @@ export default function Room() {
     const sig = new SignalingClient();
     sigRef.current = sig;
 
-    // Fetch ICE config and create peer connection after joining
     const off = sig.on(async (event) => {
       if (event.type === 'joined') {
         setStatus('connected');
         setPeers(event.peers);
 
-        // Fetch ICE config from backend
         let iceConfig: IceConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
         try {
           const res = await fetch('/api/ice-config');
           if (res.ok) iceConfig = await res.json() as IceConfig;
-        } catch {
-          // Fall back to default STUN
-        }
+        } catch { /* fall back */ }
 
         const pm = new PeerManager(iceConfig, {
           polite: event.polite,
           signaling: sig,
 
           onTrack: (trackEvent) => {
-            // Build a remote stream from incoming tracks
-            const stream = trackEvent.streams[0];
-            if (stream) setRemoteStream(stream);
+            const incomingStream = trackEvent.streams[0];
+            if (!incomingStream) return;
+
+            // Check if this is the movie stream using the stream-meta streamId
+            if (incomingStream.id === movieStreamId || movieStreamId === incomingStream.id) {
+              setViewerMovieStream(incomingStream);
+            } else {
+              // Could be camera/mic
+              setRemoteStream((prev) => {
+                // If we already have a remote stream, add tracks to it
+                if (prev && prev.id === incomingStream.id) return prev;
+                return incomingStream;
+              });
+            }
           },
 
           onDataChannel: (channel) => {
             if (channel.label === 'control') {
               channelRef.current = channel;
-              onControl(channel, (msg) => {
-                // Phase 4: handle commands
-                console.debug('[control]', msg);
+              onControl(channel, (msg: ControlMessage) => {
+                handleControlMessage(msg);
               });
             }
           },
 
-          onConnectionStateChange: (s) => {
-            setConnState(s);
-          },
-
+          onConnectionStateChange: (s) => setConnState(s),
           onIceConnectionStateChange: (s) => {
-            // ICE restart on failure
-            if (s === 'failed') {
-              pm.restartIce();
-            }
+            if (s === 'failed') pm.restartIce();
           },
         });
 
-        // If impolite, the data channel is already created inside PeerManager
         if (!event.polite && pm.controlChannel) {
           channelRef.current = pm.controlChannel;
+          pm.controlChannel.onopen = () => {
+            onControl(pm.controlChannel!, (msg: ControlMessage) => {
+              handleControlMessage(msg);
+            });
+          };
         }
 
         peerRef.current = pm;
@@ -134,13 +147,28 @@ export default function Room() {
         setPeers((prev) => prev.filter((p) => p.peerId !== event.peerId));
         setPeerName('');
         setRemoteStream(null);
+        setPeerIsStreaming(false);
+        setViewerMovieStream(null);
 
       } else if (event.type === 'room-full') {
         setStatus('full');
 
       } else if (event.type === 'signal') {
-        // Route signaling messages to the peer manager
-        await peerRef.current?.handleSignal(event.data);
+        // Handle stream-meta before routing to peer manager
+        const data = event.data;
+        if (data['type'] === 'stream-meta') {
+          const kind = data['kind'] as string;
+          if (kind === 'movie') {
+            const streamId = data['streamId'] as string;
+            setMovieStreamId(streamId);
+            setPeerIsStreaming(true);
+          } else if (kind === 'movie-ended') {
+            setPeerIsStreaming(false);
+            setViewerMovieStream(null);
+          }
+        } else {
+          await peerRef.current?.handleSignal(data);
+        }
 
       } else if (event.type === 'error') {
         setStatus('error');
@@ -160,34 +188,67 @@ export default function Room() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  // ── Camera toggle ──────────────────────────────────────────────────
+  // Keep movieStreamId ref fresh for onTrack closure
+  const movieStreamIdRef = useRef(movieStreamId);
+  useEffect(() => { movieStreamIdRef.current = movieStreamId; }, [movieStreamId]);
+
+  // Also handle track events with fresh movieStreamId
+  useEffect(() => {
+    const pm = peerRef.current;
+    if (!pm) return;
+    pm.pc.ontrack = (trackEvent) => {
+      const incomingStream = trackEvent.streams[0];
+      if (!incomingStream) return;
+      if (incomingStream.id === movieStreamIdRef.current) {
+        setViewerMovieStream(incomingStream);
+      } else {
+        setRemoteStream(incomingStream);
+      }
+    };
+  }, [movieStreamId]);
+
+  // ── Control message handler ──────────────────────────────────────
+
+  function handleControlMessage(msg: ControlMessage) {
+    if (msg.t === 'cmd') {
+      // Viewer is sending a playback command — apply to streamer's player
+      const el = streamerVideoRef.current;
+      if (!el) return;
+      if (msg.action === 'play') void el.play();
+      else if (msg.action === 'pause') el.pause();
+      else if (msg.action === 'seek') el.currentTime = msg.time;
+    }
+    if (msg.t === 'state') {
+      // Streamer broadcasted playback state — apply to viewer's display
+      // (The viewer does NOT directly control their video element; state drives it)
+    }
+  }
+
+  // Broadcast playback state to viewer (streamer side)
+  function broadcastState(playing: boolean, time: number) {
+    sendControl(channelRef.current, { t: 'state', playing, time });
+  }
+
+  // ── Camera toggle ──────────────────────────────────────────────
 
   const handleToggleCamera = useCallback(async () => {
     const pc = peerRef.current;
     if (!pc) return;
-
     if (!cameraOn) {
-      // Turn camera on
       try {
         const { stream, videoTrack } = await getLocalMedia(true, false);
         if (!videoTrack) return;
-        setLocalStream((prev) => {
-          if (prev) {
-            prev.addTrack(videoTrack);
-            return prev;
-          }
-          return stream;
-        });
         localStreamRef.current = localStreamRef.current ?? stream;
-        const sender = pc.addTrack(videoTrack, localStreamRef.current ?? stream);
+        localStreamRef.current.addTrack(videoTrack);
+        setLocalStream(new MediaStream([
+          ...localStreamRef.current.getTracks(),
+        ]));
+        const sender = pc.addTrack(videoTrack, localStreamRef.current);
         camSenderRef.current = sender;
         setCameraOn(true);
         sendControl(channelRef.current, { t: 'track-toggle', kind: 'video', enabled: true });
-      } catch (err) {
-        console.error('[media] camera error', err);
-      }
+      } catch (err) { console.error('[media] camera', err); }
     } else {
-      // Turn camera off
       if (camSenderRef.current) {
         pc.removeTrack(camSenderRef.current);
         camSenderRef.current = null;
@@ -197,23 +258,21 @@ export default function Room() {
     }
   }, [cameraOn]);
 
-  // ── Mic toggle ────────────────────────────────────────────────────
+  // ── Mic toggle ────────────────────────────────────────────────
 
   const handleToggleMic = useCallback(async () => {
     const pc = peerRef.current;
     if (!pc) return;
-
     if (!micOn) {
       try {
-        const { stream, audioTrack } = await getLocalMedia(false, true);
+        const { audioTrack } = await getLocalMedia(false, true);
         if (!audioTrack) return;
-        const sender = pc.addTrack(audioTrack, localStreamRef.current ?? stream);
+        const camStream = localStreamRef.current ?? new MediaStream();
+        const sender = pc.addTrack(audioTrack, camStream);
         micSenderRef.current = sender;
         setMicOn(true);
         sendControl(channelRef.current, { t: 'track-toggle', kind: 'audio', enabled: true });
-      } catch (err) {
-        console.error('[media] mic error', err);
-      }
+      } catch (err) { console.error('[media] mic', err); }
     } else {
       if (micSenderRef.current) {
         pc.removeTrack(micSenderRef.current);
@@ -224,7 +283,7 @@ export default function Room() {
     }
   }, [micOn]);
 
-  // ── Movie sharing (placeholder, fully implemented in Phase 3) ──────
+  // ── Movie sharing ─────────────────────────────────────────────
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -232,11 +291,93 @@ export default function Room() {
     fileInputRef.current?.click();
   }
 
-  function handleStopSharing() {
-    setIsStreaming(false);
+  async function handleFileSelected(file: File) {
+    setMovieError('');
+    setMovieHelp('');
+
+    const result = await validateMovieFile(file);
+    if (!result.ok) {
+      setMovieError(result.error ?? 'Unknown error');
+      setMovieHelp(result.helpMessage ?? '');
+      return;
+    }
+
+    const src = URL.createObjectURL(file);
+    setMovieSrc(src);
+    setIsStreaming(true);
+
+    // After the video element renders and can play, start streaming
+    // We set a small timeout so the video element has time to mount with the src
+    setTimeout(() => { void startMovieStream(); }, 200);
   }
 
-  // ── Render ────────────────────────────────────────────────────────
+  async function startMovieStream() {
+    const pc = peerRef.current;
+    const sig = sigRef.current;
+    const videoEl = streamerVideoRef.current;
+    if (!pc || !sig || !videoEl) return;
+
+    const stream = captureVideoStream(videoEl);
+    const sourceHeight = videoEl.videoHeight || 720;
+
+    // Helper to add a track to the peer connection with quality tuning
+    async function addMovieTrack(track: MediaStreamTrack) {
+      // Set content hint for video
+      if (track.kind === 'video') {
+        (track as MediaStreamTrack & { contentHint?: string }).contentHint = 'motion';
+      }
+      const sender = pc!.addTrack(track, stream);
+      movieSendersRef.current.push(sender);
+
+      if (track.kind === 'video') {
+        // Apply quality settings after a brief delay (sender needs active track)
+        setTimeout(() => {
+          void applyQualityToSender(sender, quality, sourceHeight);
+        }, 500);
+      }
+    }
+
+    // Send stream-meta BEFORE adding tracks so viewer can identify this stream
+    sig.sendSignal({ type: 'stream-meta', streamId: stream.id, kind: 'movie' });
+
+    // Add any tracks already present
+    for (const track of stream.getTracks()) {
+      await addMovieTrack(track);
+    }
+
+    // Listen for tracks that appear after play() starts (Chrome behaviour)
+    stream.onaddtrack = (event) => {
+      void addMovieTrack(event.track);
+    };
+  }
+
+  async function handleStopSharing() {
+    const pc = peerRef.current;
+    const sig = sigRef.current;
+    if (pc) {
+      for (const sender of movieSendersRef.current) {
+        pc.removeTrack(sender);
+      }
+      movieSendersRef.current = [];
+    }
+    sig?.sendSignal({ type: 'stream-meta', streamId: '', kind: 'movie-ended' });
+    setIsStreaming(false);
+    if (movieSrc) URL.revokeObjectURL(movieSrc);
+    setMovieSrc('');
+  }
+
+  async function handleQualityChange(newQuality: Quality) {
+    setQuality(newQuality);
+    const videoEl = streamerVideoRef.current;
+    const sourceHeight = videoEl?.videoHeight ?? 720;
+    for (const sender of movieSendersRef.current) {
+      if (sender.track?.kind === 'video') {
+        await applyQualityToSender(sender, newQuality, sourceHeight);
+      }
+    }
+  }
+
+  // ── Render ─────────────────────────────────────────────────────
 
   if (status === 'full') {
     return (
@@ -244,9 +385,7 @@ export default function Room() {
         <div className="text-center space-y-4">
           <p className="text-2xl font-bold">Room is full 🚫</p>
           <p className="text-gray-400">This room already has 2 people.</p>
-          <button onClick={() => navigate('/')} className="rounded-lg bg-blue-600 px-6 py-2 font-semibold hover:bg-blue-500">
-            Go Home
-          </button>
+          <button onClick={() => navigate('/')} className="rounded-lg bg-blue-600 px-6 py-2 font-semibold hover:bg-blue-500">Go Home</button>
         </div>
       </div>
     );
@@ -258,9 +397,7 @@ export default function Room() {
         <div className="text-center space-y-4">
           <p className="text-2xl font-bold">Connection error</p>
           <p className="text-gray-400">{errorMsg}</p>
-          <button onClick={() => navigate('/')} className="rounded-lg bg-blue-600 px-6 py-2 font-semibold hover:bg-blue-500">
-            Go Home
-          </button>
+          <button onClick={() => navigate('/')} className="rounded-lg bg-blue-600 px-6 py-2 font-semibold hover:bg-blue-500">Go Home</button>
         </div>
       </div>
     );
@@ -277,15 +414,14 @@ export default function Room() {
           <span className="rounded bg-gray-800 px-2 py-0.5 font-mono text-sm text-gray-400">{code}</span>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          {/* Connection badge placeholder — Phase 4 */}
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
             connState === 'connected' ? 'bg-green-900 text-green-300' :
             connState === 'failed'    ? 'bg-red-900 text-red-300' :
             'bg-yellow-900 text-yellow-300'
           }`}>
-            {connState === 'new' || connState === 'checking' ? '⏳ Connecting' :
+            {connState === 'new' || connState === 'connecting' ? '⏳ Connecting' :
              connState === 'connected' ? '🟢 Connected' :
-             connState === 'disconnected' ? '🔴 Disconnected' :
+             connState === 'disconnected' ? '🔴 Reconnecting' :
              connState === 'failed' ? '❌ Failed' : connState}
           </span>
           <span className="text-gray-400">👤 {myName}</span>
@@ -302,11 +438,8 @@ export default function Room() {
         ) : !hasPeer ? (
           <div className="text-center space-y-4 max-w-sm">
             <p className="text-xl font-semibold">Room {code}</p>
-            <div className="rounded-xl bg-gray-900 p-6 space-y-2">
+            <div className="rounded-xl bg-gray-900 p-6 space-y-3">
               <p className="text-gray-400">Waiting for someone to join…</p>
-              <p className="text-sm text-gray-500">
-                Share this link with your friend:
-              </p>
               <div className="flex gap-2">
                 <code className="flex-1 truncate rounded bg-gray-800 px-3 py-1.5 text-sm text-gray-300">
                   {window.location.href}
@@ -314,32 +447,62 @@ export default function Room() {
                 <button
                   onClick={() => { void navigator.clipboard.writeText(window.location.href); }}
                   className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"
-                >
-                  Copy
-                </button>
+                >Copy</button>
               </div>
             </div>
           </div>
         ) : (
-          /* Both peers connected */
-          <div className="flex h-full w-full items-center justify-center">
-            <p className="text-gray-500 text-sm">
-              {peerName ? `🟢 ${peerName} is here` : '🟢 Both people connected'}
-              — movie player appears in Phase 3
-            </p>
+          <div className="flex h-full w-full flex-col items-center justify-center gap-4 max-w-4xl mx-auto">
+            {/* Streamer: local movie player */}
+            {isStreaming && movieSrc && (
+              <div className="w-full">
+                <MoviePlayer
+                  src={movieSrc}
+                  isController={true}
+                  videoRef={streamerVideoRef}
+                  onPlay={(t) => broadcastState(true, t)}
+                  onPause={(t) => broadcastState(false, t)}
+                  onSeeked={(t) => broadcastState(false, t)}
+                />
+              </div>
+            )}
+
+            {/* Viewer: remote movie stream */}
+            {peerIsStreaming && viewerMovieStream && (
+              <div className="w-full">
+                <MoviePlayer
+                  stream={viewerMovieStream}
+                  isController={false}
+                  videoRef={viewerVideoRef}
+                />
+              </div>
+            )}
+
+            {/* Waiting for movie */}
+            {!isStreaming && !peerIsStreaming && (
+              <div className="text-center text-gray-500">
+                <p className="text-lg">🟢 {peerName || 'Both people'} connected</p>
+                <p className="text-sm mt-1">Click &ldquo;Share a Movie&rdquo; to start watching</p>
+              </div>
+            )}
+
+            {/* Movie validation error */}
+            {movieError && (
+              <div className="w-full max-w-2xl rounded-xl bg-red-950 border border-red-800 p-4">
+                <p className="font-semibold text-red-300">⚠️ {movieError}</p>
+                {movieHelp && (
+                  <pre className="mt-3 overflow-x-auto rounded bg-gray-900 p-3 text-xs text-gray-300 whitespace-pre-wrap">
+                    {movieHelp}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* Camera tiles — floating top-right */}
         <div className="absolute right-4 top-4 flex flex-col gap-2">
-          {/* Local camera */}
-          <CameraTile
-            stream={localStream}
-            label={`${myName} (you)`}
-            muted
-            mirrored
-          />
-          {/* Remote camera */}
+          <CameraTile stream={localStream} label={`${myName} (you)`} muted mirrored />
           {hasPeer && !remoteCamHidden && (
             <CameraTile
               stream={remoteStream}
@@ -347,19 +510,16 @@ export default function Room() {
               onHide={() => setRemoteCamHidden(true)}
             />
           )}
-          {/* Show remote camera button */}
           {hasPeer && remoteCamHidden && (
             <button
               onClick={() => setRemoteCamHidden(false)}
               className="rounded-xl bg-gray-800 px-3 py-2 text-xs text-gray-400 hover:bg-gray-700"
-            >
-              Show camera
-            </button>
+            >Show camera</button>
           )}
         </div>
       </main>
 
-      {/* Controls bar */}
+      {/* Controls */}
       <Controls
         cameraOn={cameraOn}
         micOn={micOn}
@@ -368,18 +528,23 @@ export default function Room() {
         canShareMovie={movieSupported}
         isStreaming={isStreaming}
         onShareMovie={handleShareMovie}
-        onStopSharing={handleStopSharing}
+        onStopSharing={() => { void handleStopSharing(); }}
         quality={quality}
-        onQualityChange={setQuality}
+        onQualityChange={(q) => { void handleQualityChange(q); }}
         showQuality={isStreaming}
       />
 
-      {/* Hidden file input for movie picking (Phase 3) */}
+      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
         accept=".mp4,.webm,.mov,.mkv"
         className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleFileSelected(file);
+          e.target.value = '';   // allow re-selecting same file
+        }}
       />
     </div>
   );
