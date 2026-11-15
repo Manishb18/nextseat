@@ -25,7 +25,9 @@ A 2-person browser app for watching local movie files together via WebRTC. The m
 ```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+
+# Run the server (use python -m uvicorn — the uvicorn script may not be on PATH)
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### Frontend
