@@ -45,11 +45,13 @@ export default function Room() {
   const [pc, setPc] = useState<RTCPeerConnection | null>(null);
   const [mediaError, setMediaError] = useState('');
 
-  // Camera / mic
+  // Camera / mic — LOCAL
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
+  // Camera — REMOTE (separate from movie stream)
+  const [remoteCamStream, setRemoteCamStream] = useState<MediaStream | null>(null);
   const [remoteCamHidden, setRemoteCamHidden] = useState(false);
 
   // Movie — streamer
@@ -61,7 +63,6 @@ export default function Room() {
 
   // Movie — viewer
   const [viewerMovieStream, setViewerMovieStream] = useState<MediaStream | null>(null);
-  const [movieStreamId, setMovieStreamId] = useState<string>('');
   const [peerIsStreaming, setPeerIsStreaming] = useState(false);
 
   // Chat
@@ -78,7 +79,9 @@ export default function Room() {
   const channelRef = useRef<RTCDataChannel | null>(null);
   const streamerVideoRef = useRef<HTMLVideoElement | null>(null);
   const viewerVideoRef = useRef<HTMLVideoElement | null>(null);
-  const movieSendersRef = useRef<RTCRtpSender[]>([]);
+  // Movie senders are kept alive between stop/start to allow replaceTrack()
+  const movieVideoSenderRef = useRef<RTCRtpSender | null>(null);
+  const movieAudioSenderRef = useRef<RTCRtpSender | null>(null);
   const movieStreamIdRef = useRef('');
   const myNameRef = useRef(myName);
 
@@ -86,17 +89,6 @@ export default function Room() {
   const politeRef = useRef<boolean | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const pmCreatedRef = useRef(false);  // guard against double creation
-
-  useEffect(() => { movieStreamIdRef.current = movieStreamId; }, [movieStreamId]);
-
-  // ── Race-condition fix: if stream-meta arrives AFTER ontrack ──────
-  // When movieStreamId changes, check if remoteStream is actually the movie.
-  useEffect(() => {
-    if (movieStreamId && remoteStream && remoteStream.id === movieStreamId) {
-      setViewerMovieStream(remoteStream);
-      setRemoteStream(null);
-    }
-  }, [movieStreamId, remoteStream]);
 
   // ── Control message handler ────────────────────────────────────────
 
@@ -145,11 +137,15 @@ export default function Room() {
       onTrack: (trackEvent) => {
         const incoming = trackEvent.streams[0];
         if (!incoming) return;
-        // Use the ref so we always have the latest movieStreamId
+        // Distinguish movie stream vs camera stream by stream ID.
+        // movieStreamIdRef is set synchronously when stream-meta arrives,
+        // which always comes BEFORE addTrack on the streamer side.
         if (incoming.id === movieStreamIdRef.current) {
+          // This is the movie stream — show it in the viewer player
           setViewerMovieStream(incoming);
         } else {
-          setRemoteStream(incoming);
+          // This is a camera/mic stream — show it in the camera tile
+          setRemoteCamStream(incoming);
         }
       },
 
@@ -222,7 +218,7 @@ export default function Room() {
 
       } else if (event.type === 'peer-left') {
         setPeerName('');
-        setRemoteStream(null);
+        setRemoteCamStream(null);
         setPeerIsStreaming(false);
         setViewerMovieStream(null);
         setStatus('waiting');
@@ -231,6 +227,8 @@ export default function Room() {
         peerRef.current = null;
         setPc(null);
         pmCreatedRef.current = false;
+        movieVideoSenderRef.current = null;
+        movieAudioSenderRef.current = null;
 
       } else if (event.type === 'room-full') {
         setStatus('full');
@@ -240,15 +238,14 @@ export default function Room() {
         if (data['type'] === 'stream-meta') {
           const kind = data['kind'] as string;
           if (kind === 'movie') {
+            // Set the ref SYNCHRONOUSLY so ontrack can check it immediately
             const streamId = data['streamId'] as string;
-            setMovieStreamId(streamId);
             movieStreamIdRef.current = streamId;
             setPeerIsStreaming(true);
           } else if (kind === 'movie-ended') {
             setPeerIsStreaming(false);
             setViewerMovieStream(null);
             movieStreamIdRef.current = '';
-            setMovieStreamId('');
           }
         } else {
           await peerRef.current?.handleSignal(data);
@@ -271,6 +268,8 @@ export default function Room() {
       if (localStreamRef.current) stopStream(localStreamRef.current);
       localStreamRef.current = null;
       channelRef.current = null;
+      movieVideoSenderRef.current = null;
+      movieAudioSenderRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
@@ -288,8 +287,13 @@ export default function Room() {
         localStreamRef.current.addTrack(videoTrack);
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
         if (pm) {
-          const sender = pm.addTrack(videoTrack, localStreamRef.current);
-          camSenderRef.current = sender;
+          if (camSenderRef.current) {
+            // Reuse existing sender — avoids full renegotiation
+            await pm.replaceTrack(camSenderRef.current, videoTrack);
+          } else {
+            const sender = pm.addTrack(videoTrack, localStreamRef.current);
+            camSenderRef.current = sender;
+          }
           sendControl(channelRef.current, { t: 'track-toggle', kind: 'video', enabled: true });
         }
         setCameraOn(true);
@@ -304,8 +308,8 @@ export default function Room() {
       }
     } else {
       if (camSenderRef.current && pm) {
-        pm.removeTrack(camSenderRef.current);
-        camSenderRef.current = null;
+        // Replace with null track — keeps the sender alive for next toggle
+        await pm.replaceTrack(camSenderRef.current, null);
       }
       // Stop the actual camera track so the indicator light goes off
       localStreamRef.current?.getVideoTracks().forEach((t) => t.stop());
@@ -326,8 +330,12 @@ export default function Room() {
         if (!audioTrack) return;
         if (!localStreamRef.current) localStreamRef.current = new MediaStream();
         if (pm) {
-          const sender = pm.addTrack(audioTrack, localStreamRef.current);
-          micSenderRef.current = sender;
+          if (micSenderRef.current) {
+            await pm.replaceTrack(micSenderRef.current, audioTrack);
+          } else {
+            const sender = pm.addTrack(audioTrack, localStreamRef.current);
+            micSenderRef.current = sender;
+          }
           sendControl(channelRef.current, { t: 'track-toggle', kind: 'audio', enabled: true });
         }
         setMicOn(true);
@@ -342,8 +350,7 @@ export default function Room() {
       }
     } else {
       if (micSenderRef.current && pm) {
-        pm.removeTrack(micSenderRef.current);
-        micSenderRef.current = null;
+        await pm.replaceTrack(micSenderRef.current, null);
       }
       setMicOn(false);
       sendControl(channelRef.current, { t: 'track-toggle', kind: 'audio', enabled: false });
@@ -373,6 +380,8 @@ export default function Room() {
     const pm = peerRef.current;
     const sig = sigRef.current;
     if (!pm || !sig) return;
+    // pm is non-null here; capture as non-null for the nested async closure
+    const pmSafe = pm;
 
     // Wait for video metadata before capturing (Chrome needs this)
     if (videoEl.readyState < 1) {
@@ -382,32 +391,56 @@ export default function Room() {
     const stream = captureVideoStream(videoEl);
     const sourceHeight = videoEl.videoHeight || 720;
 
-    // Send stream-meta BEFORE adding tracks (viewer needs streamId to identify movie stream)
+    // Send stream-meta BEFORE adding/replacing tracks.
+    // The viewer's ontrack handler reads movieStreamIdRef synchronously,
+    // so the ref must be set before ontrack fires. stream-meta sets that ref.
     sig.sendSignal({ type: 'stream-meta', streamId: stream.id, kind: 'movie' });
+    // Also set locally so the ref is consistent on the streamer side
+    movieStreamIdRef.current = stream.id;
 
-    async function addMovieTrack(track: MediaStreamTrack) {
+    async function setupTrack(track: MediaStreamTrack) {
       if (track.kind === 'video') {
         (track as MediaStreamTrack & { contentHint?: string }).contentHint = 'motion';
       }
-      const sender = pm!.addTrack(track, stream);
-      movieSendersRef.current.push(sender);
-      if (track.kind === 'video') {
-        setTimeout(() => { void applyQualityToSender(sender, quality, sourceHeight); }, 500);
+
+      if (track.kind === 'video' && movieVideoSenderRef.current) {
+        // Reuse existing video sender — no renegotiation needed, viewer ontrack fires for replaceTrack
+        await movieVideoSenderRef.current.replaceTrack(track);
+        setTimeout(() => {
+          void applyQualityToSender(movieVideoSenderRef.current!, quality, sourceHeight);
+        }, 500);
+      } else if (track.kind === 'audio' && movieAudioSenderRef.current) {
+        await movieAudioSenderRef.current.replaceTrack(track);
+      } else {
+        // First time — addTrack (triggers renegotiation + ontrack on viewer)
+        const sender = pmSafe.addTrack(track, stream);
+        if (track.kind === 'video') {
+          movieVideoSenderRef.current = sender;
+          setTimeout(() => { void applyQualityToSender(sender, quality, sourceHeight); }, 500);
+        } else {
+          movieAudioSenderRef.current = sender;
+        }
       }
     }
 
+    // Handle tracks already present on the stream
     for (const track of stream.getTracks()) {
-      await addMovieTrack(track);
+      await setupTrack(track);
     }
 
-    // Chrome: audio/video tracks appear on onaddtrack after play() starts
-    stream.onaddtrack = (e) => { void addMovieTrack(e.track); };
+    // Chrome: audio/video tracks may appear after play() starts
+    stream.onaddtrack = (e) => { void setupTrack(e.track); };
   }
 
   async function handleStopSharing() {
     const pm = peerRef.current;
-    for (const sender of movieSendersRef.current) pm?.removeTrack(sender);
-    movieSendersRef.current = [];
+    // Mute senders (replace with null) but keep them alive for restart
+    if (movieVideoSenderRef.current && pm) {
+      try { await movieVideoSenderRef.current.replaceTrack(null); } catch { /* ignore */ }
+    }
+    if (movieAudioSenderRef.current && pm) {
+      try { await movieAudioSenderRef.current.replaceTrack(null); } catch { /* ignore */ }
+    }
     sigRef.current?.sendSignal({ type: 'stream-meta', streamId: '', kind: 'movie-ended' });
     setIsStreaming(false);
     if (movieSrc) { URL.revokeObjectURL(movieSrc); setMovieSrc(''); }
@@ -416,8 +449,8 @@ export default function Room() {
   async function handleQualityChange(newQuality: Quality) {
     setQuality(newQuality);
     const sourceHeight = streamerVideoRef.current?.videoHeight ?? 720;
-    for (const sender of movieSendersRef.current) {
-      if (sender.track?.kind === 'video') await applyQualityToSender(sender, newQuality, sourceHeight);
+    if (movieVideoSenderRef.current) {
+      await applyQualityToSender(movieVideoSenderRef.current, newQuality, sourceHeight);
     }
   }
 
@@ -573,7 +606,7 @@ export default function Room() {
         <div className="absolute right-4 top-4 flex flex-col gap-2">
           <CameraTile stream={localStream} label={`${myName} (you)`} muted mirrored />
           {hasPeer && !remoteCamHidden && (
-            <CameraTile stream={remoteStream} label={peerName || 'Peer'} onHide={() => setRemoteCamHidden(true)} />
+            <CameraTile stream={remoteCamStream} label={peerName || 'Peer'} onHide={() => setRemoteCamHidden(true)} />
           )}
           {hasPeer && remoteCamHidden && (
             <button onClick={() => setRemoteCamHidden(false)} className="rounded-xl bg-gray-800 px-3 py-2 text-xs text-gray-400 hover:bg-gray-700">
