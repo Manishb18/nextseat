@@ -2,9 +2,9 @@
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 0.1 | Backend project setup | in_progress |
-| 0.2 | Frontend project setup | not_started |
-| 0.3 | .env.example and README | not_started |
+| 0.1 | Backend project setup | done |
+| 0.2 | Frontend project setup | done |
+| 0.3 | .env.example and README | done |
 | 1.1 | Room manager | not_started |
 | 1.2 | REST endpoints | not_started |
 | 1.3 | WebSocket signaling | not_started |
