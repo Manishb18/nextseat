@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface MoviePlayerProps {
-  /** The MediaStream from the remote peer (viewer) or local file (streamer). */
+  /** The MediaStream from the remote peer (viewer). */
   stream?: MediaStream | null;
   /** If provided, this src is used directly (streamer playing local file). */
   src?: string;
-  /** Whether this user controls playback (streamer). */
+  /** Whether this user IS the streamer (has local controls). */
   isController: boolean;
   onPlay?: (time: number) => void;
   onPause?: (time: number) => void;
   onSeeked?: (time: number) => void;
-  /** Ref exposed so parent can call play/pause/seek imperatively. */
+  /** Ref exposed so parent can imperatively apply state commands. */
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
@@ -24,11 +24,12 @@ export default function MoviePlayer({
   videoRef: externalRef,
 }: MoviePlayerProps) {
   const internalRef = useRef<HTMLVideoElement>(null);
-  const videoEl = externalRef ?? internalRef;
+  const videoEl = (externalRef ?? internalRef) as React.RefObject<HTMLVideoElement>;
 
   const [soundLocked, setSoundLocked] = useState(false);
+  const [viewerPlaying, setViewerPlaying] = useState(false);
 
-  // Attach stream or src
+  // Attach stream or src to the video element
   useEffect(() => {
     const el = videoEl.current;
     if (!el) return;
@@ -36,7 +37,7 @@ export default function MoviePlayer({
       el.srcObject = stream;
       el.muted = false;
       el.play().catch(() => {
-        // Autoplay blocked — show unlock overlay
+        // Autoplay blocked — mute and retry, show overlay
         setSoundLocked(true);
         el.muted = true;
         void el.play();
@@ -46,34 +47,39 @@ export default function MoviePlayer({
     }
   }, [stream, src, videoEl]);
 
-  // Streamer: emit events so Room.tsx can broadcast state
+  // Track local playing state for viewer UI
+  useEffect(() => {
+    const el = videoEl.current;
+    if (!el || isController) return;
+    const onP = () => setViewerPlaying(true);
+    const onPa = () => setViewerPlaying(false);
+    el.addEventListener('play', onP);
+    el.addEventListener('pause', onPa);
+    return () => { el.removeEventListener('play', onP); el.removeEventListener('pause', onPa); };
+  }, [videoEl, isController]);
+
   function handlePlay() {
-    if (isController) onPlay?.(videoEl.current?.currentTime ?? 0);
+    onPlay?.(videoEl.current?.currentTime ?? 0);
   }
   function handlePause() {
-    if (isController) onPause?.(videoEl.current?.currentTime ?? 0);
+    onPause?.(videoEl.current?.currentTime ?? 0);
   }
   function handleSeeked() {
-    if (isController) onSeeked?.(videoEl.current?.currentTime ?? 0);
+    onSeeked?.(videoEl.current?.currentTime ?? 0);
   }
 
   async function unlockSound() {
     const el = videoEl.current;
     if (!el) return;
     el.muted = false;
-    try {
-      await el.play();
-      setSoundLocked(false);
-    } catch {
-      // Still blocked — keep overlay
-    }
+    try { await el.play(); setSoundLocked(false); } catch { /* still blocked */ }
   }
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl bg-black shadow-2xl">
       <video
-        ref={videoEl as React.RefObject<HTMLVideoElement>}
-        className="w-full"
+        ref={videoEl}
+        className="w-full max-h-[70vh]"
         controls={isController}
         playsInline
         onPlay={handlePlay}
@@ -81,7 +87,20 @@ export default function MoviePlayer({
         onSeeked={handleSeeked}
       />
 
-      {/* Sound unlock overlay for viewer (autoplay policy) */}
+      {/* Viewer controls — send commands to streamer */}
+      {!isController && !soundLocked && (
+        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-4 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => { const el = videoEl.current; if (el) { if (el.paused) onPlay?.(el.currentTime); else onPause?.(el.currentTime); } }}
+            className="rounded-full bg-white/20 px-4 py-2 text-sm font-semibold hover:bg-white/30"
+          >
+            {viewerPlaying ? '⏸ Pause' : '▶ Play'}
+          </button>
+          <span className="text-xs text-gray-400">Controls sent to streamer</span>
+        </div>
+      )}
+
+      {/* Sound unlock overlay */}
       {soundLocked && (
         <div
           className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center bg-black/70 text-white"
