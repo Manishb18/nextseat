@@ -93,12 +93,18 @@ async def signaling(ws: WebSocket, code: str) -> None:
         raw = await ws.receive_text()
         msg = json.loads(raw)
     except (WebSocketDisconnect, json.JSONDecodeError):
-        await ws.close()
+        try:
+            await ws.close()
+        except Exception:
+            pass
         return
 
     if msg.get("type") != "join" or not msg.get("name"):
-        await ws.send_json({"type": "error", "message": "Expected {type:'join', name:'...'}"})
-        await ws.close()
+        try:
+            await ws.send_json({"type": "error", "message": "Expected {type:'join', name:'...'}"})
+            await ws.close()
+        except Exception:
+            pass
         return
 
     name: str = msg["name"]
@@ -108,16 +114,25 @@ async def signaling(ws: WebSocket, code: str) -> None:
     try:
         peer_id, is_polite = room_manager.join_room(code, ws, name, ip)
     except RoomNotFound:
-        await ws.send_json({"type": "error", "message": "Room not found"})
-        await ws.close()
+        try:
+            await ws.send_json({"type": "error", "message": "Room not found"})
+            await ws.close()
+        except Exception:
+            pass
         return
     except RoomFull:
-        await ws.send_json({"type": "room-full"})
-        await ws.close()
+        try:
+            await ws.send_json({"type": "room-full"})
+            await ws.close()
+        except Exception:
+            pass
         return
     except RateLimited:
-        await ws.send_json({"type": "error", "message": "Rate limited"})
-        await ws.close()
+        try:
+            await ws.send_json({"type": "error", "message": "Rate limited"})
+            await ws.close()
+        except Exception:
+            pass
         return
 
     # Send "joined" to the new peer

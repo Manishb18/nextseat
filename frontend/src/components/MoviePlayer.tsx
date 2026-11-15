@@ -12,6 +12,12 @@ interface MoviePlayerProps {
   onSeeked?: (time: number) => void;
   /** Ref exposed so parent can imperatively apply state commands. */
   videoRef?: React.RefObject<HTMLVideoElement | null>;
+  /**
+   * Called once when the streamer's local video element is ready
+   * (src assigned + loadedmetadata fired). Parent uses this to start
+   * captureStream() at the right time, before the first play().
+   */
+  onVideoReady?: (el: HTMLVideoElement) => void;
 }
 
 export default function MoviePlayer({
@@ -22,6 +28,7 @@ export default function MoviePlayer({
   onPause,
   onSeeked,
   videoRef: externalRef,
+  onVideoReady,
 }: MoviePlayerProps) {
   const internalRef = useRef<HTMLVideoElement>(null);
   const videoEl = (externalRef ?? internalRef) as React.RefObject<HTMLVideoElement>;
@@ -44,8 +51,14 @@ export default function MoviePlayer({
       });
     } else if (src) {
       el.src = src;
+      el.load();
+      // Notify parent once metadata is ready so it can captureStream() before play()
+      el.onloadedmetadata = () => {
+        onVideoReady?.(el);
+        el.onloadedmetadata = null; // fire only once
+      };
     }
-  }, [stream, src, videoEl]);
+  }, [stream, src, videoEl, onVideoReady]);
 
   // Track local playing state for viewer UI
   useEffect(() => {
