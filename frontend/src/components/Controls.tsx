@@ -1,9 +1,11 @@
-import Icon from './Icon';
+﻿import Icon from './Icon';
 
 interface ControlsProps {
   cameraOn: boolean;
   micOn: boolean;
   onToggleCamera: () => void;
+  cameraFacing: 'user' | 'environment';
+  onSwitchCamera: () => void;
   onToggleMic: () => void;
   canShareMovie: boolean;
   isStreaming: boolean;
@@ -18,6 +20,8 @@ export default function Controls({
   cameraOn,
   micOn,
   onToggleCamera,
+  cameraFacing,
+  onSwitchCamera,
   onToggleMic,
   canShareMovie,
   isStreaming,
@@ -36,11 +40,17 @@ export default function Controls({
         aria-label={cameraOn ? 'Turn off camera' : 'Turn on camera'}
         aria-pressed={cameraOn}
         className={`flex h-10 w-10 items-center justify-center rounded-full text-lg transition ${
-          cameraOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-700 hover:bg-red-600'
+          cameraOn ? 'bg-stone-200 hover:bg-stone-300 text-stone-700' : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
         }`}
       >
         <Icon name={cameraOn ? 'camera' : 'camera-off'} size={19} />
       </button>
+
+      {cameraOn && (
+        <button type="button" onClick={onSwitchCamera} title="Switch front/back camera" aria-label={cameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'} className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-xl transition hover:bg-gray-600">
+          â†»
+        </button>
+      )}
 
       {/* Mic toggle */}
       <button
@@ -49,7 +59,7 @@ export default function Controls({
         aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
         aria-pressed={micOn}
         className={`flex h-10 w-10 items-center justify-center rounded-full text-lg transition ${
-          micOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-700 hover:bg-red-600'
+          micOn ? 'bg-stone-200 hover:bg-stone-300 text-stone-700' : 'bg-stone-100 hover:bg-stone-200 text-stone-500'
         }`}
       >
         <Icon name={micOn ? 'microphone' : 'microphone-off'} size={19} />
@@ -62,7 +72,7 @@ export default function Controls({
       {isStreaming ? (
         <button
           onClick={onStopSharing}
-          className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
+          className="rounded-lg bg-stone-700 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-600"
         >
           <span className="inline-flex items-center gap-2"><Icon name="stop" size={16} /> Stop sharing</span>
         </button>
@@ -77,7 +87,7 @@ export default function Controls({
         </button>
       )}
 
-      {/* Quality selector — only visible to streamer */}
+      {/* Quality selector â€” only visible to streamer */}
       {showQuality && isStreaming && (
         <select
           value={quality}
@@ -92,3 +102,4 @@ export default function Controls({
     </div>
   );
 }
+

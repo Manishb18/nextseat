@@ -3,9 +3,8 @@ export default function Brand({ compact = false, className = '' }: { compact?: b
     <span className={`nextseat-brand ${className}`}>
       <span className="nextseat-mark" aria-hidden="true">
         <svg viewBox="0 0 40 40" fill="none">
-          <path d="M11 7.5v14.25c0 2.35 1.9 4.25 4.25 4.25H28" stroke="currentColor" strokeWidth="3.25" strokeLinecap="round" />
-          <path d="M29 5.5v11.75c0 2.35-1.9 4.25-4.25 4.25H18" stroke="currentColor" strokeWidth="3.25" strokeLinecap="round" />
-          <path d="m17 27 8 4.5-8 4.5V27Z" fill="#a5f3fc" />
+          <path d="M10 8v13a5 5 0 0 0 5 5h13M30 7v10a5 5 0 0 1-5 5h-8" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
+          <path d="m17 26 8 4.5-8 4.5V26Z" fill="currentColor" />
         </svg>
       </span>
       {!compact && <span className="nextseat-wordmark">Nextseat<span>.</span></span>}

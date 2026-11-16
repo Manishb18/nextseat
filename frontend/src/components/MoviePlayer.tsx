@@ -28,6 +28,8 @@ interface MoviePlayerProps {
   onVideoReady?: (el: HTMLVideoElement) => void;
   onVideoError?: () => void;
   onVideoEnded?: () => void;
+  onSync?: () => void;
+  syncing?: boolean;
 }
 
 export default function MoviePlayer({
@@ -47,6 +49,8 @@ export default function MoviePlayer({
   onVideoReady,
   onVideoError,
   onVideoEnded,
+  onSync,
+  syncing = false,
 }: MoviePlayerProps) {
   const internalRef = useRef<HTMLVideoElement>(null);
   const videoEl = (externalRef ?? internalRef) as React.RefObject<HTMLVideoElement>;
@@ -287,6 +291,10 @@ export default function MoviePlayer({
           >
             <Icon name={viewerMuted ? 'volume' : 'volume-off'} size={17} />
           </button>
+          <button type="button" onClick={onSync} disabled={!controlsEnabled || syncing} title="Resync playback with the host" aria-label={syncing ? 'Syncing playback' : 'Sync playback'} aria-busy={syncing} className="inline-flex items-center gap-1.5 rounded-full bg-blue-600/80 px-3 py-2 text-sm font-semibold hover:bg-blue-500 disabled:cursor-wait disabled:opacity-50">
+            {syncing && <span aria-hidden="true" className="animate-spin">↻</span>}
+            {syncing ? 'Syncing…' : 'Sync'}
+          </button>
           <span className="text-xs text-gray-400">{controlsEnabled ? 'Controls sent to host' : 'Connecting controls…'}</span>
         </div>
       )}
@@ -320,12 +328,6 @@ export default function MoviePlayer({
         </div>
       )}
 
-      {/* Streamer keep-tab-visible warning */}
-      {isController && src && (
-        <div className="absolute left-2 top-2 rounded bg-yellow-900/80 px-2 py-1 text-xs text-yellow-200">
-          ⚠️ Keep this tab visible — minimizing may cause stream issues
-        </div>
-      )}
     </div>
   );
 }

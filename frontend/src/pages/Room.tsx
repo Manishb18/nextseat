@@ -27,6 +27,7 @@ import Chat, { type ChatEntry } from '../components/Chat';
 import Icon from '../components/Icon';
 import Brand from '../components/Brand';
 import CopyButton from '../components/CopyButton';
+import { ThemeToggle } from '../App';
 
 interface LocationState {
   name?: string;
@@ -161,6 +162,7 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
 
   // Camera / mic — LOCAL
   const [cameraOn, setCameraOn] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [micOn, setMicOn] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
@@ -169,6 +171,9 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
   const [remoteVideoEnabled, setRemoteVideoEnabled] = useState<boolean | null>(null);
   const [remoteCamHidden, setRemoteCamHidden] = useState(false);
   const [controlReady, setControlReady] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const syncingRef = useRef(false);
+  const [syncToast, setSyncToast] = useState<{ success: boolean; message: string } | null>(null);
 
   // Movie — streamer
   const [isStreaming, setIsStreaming] = useState(false);
@@ -185,6 +190,8 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
   const [playback, setPlayback] = useState({ time: 0, duration: 0, playing: false });
   const lastPlaybackUpdateRef = useRef(0);
   const pendingPlaybackActionRef = useRef<{ action: 'play' | 'pause' | 'seek'; time: number; expiresAt: number } | null>(null);
+  const syncRequestIdRef = useRef(0);
+  const syncTimeoutRef = useRef<number | null>(null);
 
   // Chat
   const [chatMessages, setChatMessages] = useState<ChatEntry[]>([]);
@@ -276,8 +283,48 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
       setRemoteVideoEnabled((current) => trackToggleEnabled(current, msg));
     } else if (msg.t === 'reaction') {
       addReaction(msg.emoji);
+    } else if (msg.t === 'sync-request') {
+      const video = streamerVideoRef.current;
+      const success = Boolean(video && video.currentSrc && Number.isFinite(video.currentTime));
+      if (success && video) broadcastState(!video.paused, video.currentTime);
+      sendControl(channelRef.current, { t: 'sync-result', requestId: msg.requestId, success });
+    } else if (msg.t === 'sync-result') {
+      if (msg.requestId !== syncRequestIdRef.current || !syncingRef.current) return;
+      if (syncTimeoutRef.current !== null) window.clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
+      syncingRef.current = false;
+      setSyncing(false);
+      setSyncToast(msg.success
+        ? { success: true, message: 'Playback synced with the host.' }
+        : { success: false, message: 'Sync failed: the host has no active video to sync.' });
+      window.setTimeout(() => setSyncToast(null), 3_500);
     }
   }, [addReaction]);
+
+  useEffect(() => () => {
+    if (syncTimeoutRef.current !== null) window.clearTimeout(syncTimeoutRef.current);
+  }, []);
+
+  function requestPlaybackSync() {
+    if (syncingRef.current) return;
+    const requestId = Date.now();
+    syncRequestIdRef.current = requestId;
+    setSyncToast(null);
+    if (!sendControl(channelRef.current, { t: 'sync-request', requestId })) {
+      setSyncToast({ success: false, message: 'Sync failed: the room connection is unavailable.' });
+      window.setTimeout(() => setSyncToast(null), 3_500);
+      return;
+    }
+    syncingRef.current = true;
+    setSyncing(true);
+    syncTimeoutRef.current = window.setTimeout(() => {
+      syncTimeoutRef.current = null;
+      syncingRef.current = false;
+      setSyncing(false);
+      setSyncToast({ success: false, message: 'Sync timed out. Check the room connection and try again.' });
+      window.setTimeout(() => setSyncToast(null), 3_500);
+    }, 5_000);
+  }
 
   const registerControlChannel = useCallback((channel: RTCDataChannel) => {
     if (channel.label !== 'control') return;
@@ -595,7 +642,7 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
     setMediaError('');
     if (!cameraOn) {
       try {
-        const { videoTrack } = await getLocalMedia(true, false);
+        const { videoTrack } = await getLocalMedia(true, false, cameraFacing);
         if (!videoTrack) return;
         if (!mountedRef.current) { videoTrack.stop(); return; }
         if (!localStreamRef.current) localStreamRef.current = new MediaStream();
@@ -641,7 +688,30 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
       setLocalStream(new MediaStream(localStreamRef.current?.getTracks() ?? []));
       sendControl(channelRef.current, { t: 'track-toggle', kind: 'video', enabled: false });
     }
-  }, [cameraOn]);
+  }, [cameraOn, cameraFacing]);
+
+  const handleSwitchCamera = useCallback(async () => {
+    const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
+    setMediaError('');
+    let nextTrack: MediaStreamTrack | null = null;
+    try {
+      ({ videoTrack: nextTrack } = await getLocalMedia(true, false, nextFacing));
+      if (!nextTrack) return;
+      if (!mountedRef.current) { nextTrack.stop(); return; }
+      const oldTrack = localStreamRef.current?.getVideoTracks()[0] ?? null;
+      if (!localStreamRef.current) localStreamRef.current = new MediaStream();
+      if (oldTrack) localStreamRef.current.removeTrack(oldTrack);
+      localStreamRef.current.addTrack(nextTrack);
+      if (camSenderRef.current && peerRef.current) await peerRef.current.replaceTrack(camSenderRef.current, nextTrack);
+      setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+      oldTrack?.stop();
+      setCameraFacing(nextFacing);
+    } catch (err) {
+      nextTrack?.stop();
+      const error = err as Error;
+      setMediaError('Could not switch camera: ' + error.message);
+    }
+  }, [cameraFacing]);
 
   // ── Mic toggle ────────────────────────────────────────────────────
 
@@ -893,6 +963,7 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
         </div>
         <div className="flex items-center gap-3 text-sm">
           <ConnectionBadge pc={pc} />
+          <ThemeToggle />
           {reconnecting && <span className="text-xs text-yellow-300">Reconnecting signaling…</span>}
           {connectionState === 'failed' && (
             <button onClick={() => sigRef.current?.reconnect()} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-blue-300 hover:bg-blue-950" aria-label="Reconnect to room">
@@ -994,6 +1065,8 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
                   playbackTime={playback.time}
                   duration={playback.duration}
                   onRemoteSeek={(t) => { sendPlayCmd('seek', t); }}
+                  onSync={requestPlaybackSync}
+                  syncing={syncing}
                 />
               </div>
             )}
@@ -1060,6 +1133,11 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
         </div>
 
         {/* Media error toast */}
+        {syncToast && (
+          <div role="status" aria-live="polite" className={'absolute bottom-20 left-1/2 -translate-x-1/2 rounded-lg border px-4 py-2 text-sm shadow-lg ' + (syncToast.success ? 'border-green-700 bg-green-900 text-green-100' : 'border-red-700 bg-red-900 text-red-100')}>
+            {syncToast.message}
+          </div>
+        )}
         {mediaError && (
           <div className="absolute bottom-20 left-1/2 -translate-x-1/2 max-w-md rounded-lg bg-red-900 border border-red-700 px-4 py-2 text-sm text-red-200 shadow-lg">
             {mediaError}
@@ -1074,6 +1152,8 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
           cameraOn={cameraOn}
           micOn={micOn}
           onToggleCamera={() => { void handleToggleCamera(); }}
+          cameraFacing={cameraFacing}
+          onSwitchCamera={() => { void handleSwitchCamera(); }}
           onToggleMic={() => { void handleToggleMic(); }}
           canShareMovie={movieSupported}
           isStreaming={isStreaming}

@@ -40,7 +40,12 @@ export interface ReactionMessage {
   emoji: '❤️' | '😂' | '👏' | '🔥' | '🎉';
 }
 
-export type ControlMessage = CmdMessage | StateMessage | ChatMessage | TrackToggleMessage | ReactionMessage;
+/** Viewer → Streamer: request an immediate authoritative playback refresh. */
+export interface SyncRequestMessage { t: 'sync-request'; requestId: number; }
+/** Streamer → Viewer: report whether the sync request was handled. */
+export interface SyncResultMessage { t: 'sync-result'; requestId: number; success: boolean; }
+
+export type ControlMessage = CmdMessage | StateMessage | ChatMessage | TrackToggleMessage | ReactionMessage | SyncRequestMessage | SyncResultMessage;
 
 export type ControlMessageListener = (msg: ControlMessage) => void;
 
@@ -101,6 +106,10 @@ export function onControl(
         listener(msg as unknown as TrackToggleMessage);
       } else if (msg.t === 'reaction' && ['❤️', '😂', '👏', '🔥', '🎉'].includes(String(msg.emoji))) {
         listener(msg as unknown as ReactionMessage);
+      } else if (msg.t === 'sync-request') {
+        if (Number.isSafeInteger(msg.requestId) && Number(msg.requestId) > 0) listener(msg as unknown as SyncRequestMessage);
+      } else if (msg.t === 'sync-result' && Number.isSafeInteger(msg.requestId) && Number(msg.requestId) > 0 && typeof msg.success === 'boolean') {
+        listener(msg as unknown as SyncResultMessage);
       }
     } catch {
       // Ignore malformed messages

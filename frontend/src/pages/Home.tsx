@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Brand from '../components/Brand';
+import { ThemeToggle } from '../App';
 
 const steps = [
   { number: '01', title: 'Create a private room', detail: 'Start a room and share its six character invite code.' },
@@ -45,11 +46,10 @@ export default function Home() {
 
   return (
     <main className="dashboard-shell min-h-screen text-white">
-      <div className="dashboard-glow" aria-hidden="true" />
       <div className="relative mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
         <header className="flex items-center justify-between border-b border-white/[0.08] pb-5">
           <a href="#top" className="text-white no-underline"><Brand /></a>
-          <a href="#how-it-works" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-white/25 hover:text-white">How it works <span aria-hidden="true">↗</span></a>
+          <div className="flex items-center gap-3"><a href="#how-it-works" className="quiet-link rounded-full px-4 py-2 text-sm transition">How it works <span aria-hidden="true">↗</span></a><ThemeToggle /></div>
         </header>
 
         <section id="top" className="grid gap-12 pb-20 pt-14 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:pb-24 lg:pt-20">

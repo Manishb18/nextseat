@@ -23,13 +23,14 @@ const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
 export async function getLocalMedia(
   video: boolean,
   audio: boolean,
+  facingMode: 'user' | 'environment' = 'user',
 ): Promise<LocalMedia> {
   if (!video && !audio) {
     return { stream: new MediaStream(), videoTrack: null, audioTrack: null };
   }
 
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: video ? { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 24, max: 30 } } : false,
+    video: video ? { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 24, max: 30 }, facingMode: { ideal: facingMode } } : false,
     audio: audio ? AUDIO_CONSTRAINTS : false,
   });
 
