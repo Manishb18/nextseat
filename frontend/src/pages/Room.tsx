@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type FormEvent } from 'react';
+import { useEffect, useRef, useState, useCallback, type CSSProperties, type FormEvent } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { SignalingClient } from '../lib/signaling';
 import { PeerManager, type IceConfig } from '../lib/peer';
@@ -10,6 +10,7 @@ import {
   applyViewerState,
   trackToggleEnabled,
   type ControlMessage,
+  type ReactionMessage,
 } from '../lib/controls';
 import {
   validateMovieFile,
@@ -24,6 +25,8 @@ import MoviePlayer from '../components/MoviePlayer';
 import ConnectionBadge from '../components/ConnectionBadge';
 import Chat, { type ChatEntry } from '../components/Chat';
 import Icon from '../components/Icon';
+import Brand from '../components/Brand';
+import CopyButton from '../components/CopyButton';
 
 interface LocationState {
   name?: string;
@@ -31,6 +34,8 @@ interface LocationState {
 }
 
 let chatIdCounter = 0;
+let reactionIdCounter = 0;
+const reactionEmojis: ReactionMessage['emoji'][] = ['❤️', '😂', '👏', '🔥', '🎉'];
 
 async function fetchIceConfig(): Promise<IceConfig> {
   try {
@@ -53,7 +58,7 @@ function NameGate({ code, onJoin }: { code: string; onJoin: (name: string) => vo
     <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
       <div className="w-full max-w-sm space-y-6 px-6">
         <div className="text-center">
-          <h1 className="text-3xl font-bold">🎬 Watch Party</h1>
+          <h1 className="flex justify-center"><Brand /></h1>
           <p className="mt-2 text-gray-400">You're joining room <span className="font-mono text-white">{code}</span></p>
         </div>
         <form onSubmit={handleSubmit} className="rounded-xl bg-gray-900 p-6 space-y-4">
@@ -183,6 +188,7 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
 
   // Chat
   const [chatMessages, setChatMessages] = useState<ChatEntry[]>([]);
+  const [reactions, setReactions] = useState<Array<{ id: number; emoji: ReactionMessage['emoji']; drift: number }>>([]);
   const fileValidationGenerationRef = useRef(0);
 
   const movieSupported = isCaptureStreamSupported();
@@ -221,6 +227,13 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
     lastIceRestartAtRef.current = now;
     manager.restartIce();
   }
+
+  const addReaction = useCallback((emoji: ReactionMessage['emoji']) => {
+    const id = ++reactionIdCounter;
+    const drift = Math.round((Math.random() - 0.5) * 56);
+    setReactions((current) => [...current, { id, emoji, drift }]);
+    window.setTimeout(() => setReactions((current) => current.filter((reaction) => reaction.id !== id)), 2_600);
+  }, []);
 
   // ── Control message handler ────────────────────────────────────────
 
@@ -261,8 +274,10 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
         ].slice(-200));
     } else if (msg.t === 'track-toggle') {
       setRemoteVideoEnabled((current) => trackToggleEnabled(current, msg));
+    } else if (msg.t === 'reaction') {
+      addReaction(msg.emoji);
     }
-  }, []);
+  }, [addReaction]);
 
   const registerControlChannel = useCallback((channel: RTCDataChannel) => {
     if (channel.label !== 'control') return;
@@ -822,6 +837,11 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
     ].slice(-200));
   }
 
+  function handleSendReaction(emoji: ReactionMessage['emoji']) {
+    if (!sendControl(channelRef.current, { t: 'reaction', emoji })) return;
+    addReaction(emoji);
+  }
+
   function handleLeaveRoom() {
     sigRef.current?.disconnect();
     navigate('/', { replace: true });
@@ -864,11 +884,11 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
   const hasPeer = status === 'connected';
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-gray-950 text-white">
+    <div className="watch-room flex h-dvh flex-col overflow-hidden bg-gray-950 text-white">
       {/* Header */}
       <header className="flex flex-shrink-0 items-center justify-between border-b border-gray-800 px-6 py-3">
         <div className="flex items-center gap-3">
-          <span className="text-lg font-bold">🎬 Watch Party</span>
+          <Brand />
           <span className="rounded bg-gray-800 px-2 py-0.5 font-mono text-sm text-gray-400">{code}</span>
         </div>
         <div className="flex items-center gap-3 text-sm">
@@ -893,6 +913,9 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
 
       {/* Main area */}
       <main className="relative flex flex-1 items-center justify-center overflow-hidden bg-gray-950 p-4">
+        <div className="reaction-flight-layer" aria-live="polite" aria-label="Room reactions" aria-relevant="additions">
+          {reactions.map((reaction) => <span key={reaction.id} className="reaction-flight" style={{ '--reaction-drift': `${reaction.drift}px` } as CSSProperties} aria-hidden="true">{reaction.emoji}</span>)}
+        </div>
 
         {/* Connecting / waiting */}
         {(status === 'connecting' || status === 'waiting') && !isStreaming && (
@@ -912,10 +935,7 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
                   <code className="flex-1 truncate rounded bg-gray-800 px-3 py-1.5 text-sm text-gray-300">
                     {window.location.href}
                   </code>
-                  <button
-                    onClick={() => { void navigator.clipboard.writeText(window.location.href); }}
-                    className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"
-                  >Copy</button>
+                  <CopyButton value={window.location.href} className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600" />
                 </div>
               </div>
             )}
@@ -987,6 +1007,16 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
                 <p className="text-lg">🟢 {peerName || 'Both people'} connected</p>
                 <p className="text-sm mt-1">Click &ldquo;Share a Movie&rdquo; to start watching</p>
               </div>
+            )}
+
+            {hasPeer && (
+              <section className="reaction-dock" aria-label="Room reactions">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2" role="group" aria-label="Send a reaction">
+                  {reactionEmojis.map((emoji) => <button key={emoji} type="button" onClick={() => handleSendReaction(emoji)} disabled={!controlReady} className="reaction-button" aria-label={`Send ${emoji} reaction`} title={`Send ${emoji}`}>
+                    {emoji}
+                  </button>)}
+                </div>
+              </section>
             )}
 
             {/* Movie validation error */}

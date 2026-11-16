@@ -1,4 +1,4 @@
-# 🎬 Watch Party
+# Nextseat
 
 A 2-person browser app for watching local movie files together via WebRTC. The movie streams peer-to-peer — it **never touches the server**. Only signaling messages pass through the backend.
 

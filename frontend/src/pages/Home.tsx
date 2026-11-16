@@ -1,5 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Brand from '../components/Brand';
+
+const steps = [
+  { number: '01', title: 'Create a private room', detail: 'Start a room and share its six character invite code.' },
+  { number: '02', title: 'Invite one person', detail: 'Your room is made for two people, with a direct peer connection.' },
+  { number: '03', title: 'Share and press play', detail: 'The host chooses a compatible MP4 or WebM file. Then pause and seek together in sync.' },
+];
 
 export default function Home() {
   const navigate = useNavigate();
@@ -7,9 +14,8 @@ export default function Home() {
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
   const canCreate = name.trim().length > 0;
-  const canJoin = name.trim().length > 0 && joinCode.trim().length === 6;
+  const canJoin = canCreate && joinCode.trim().length === 6;
 
   async function handleCreate() {
     if (!canCreate) return;
@@ -34,92 +40,55 @@ export default function Home() {
   function handleJoin(e: FormEvent) {
     e.preventDefault();
     if (!canJoin) return;
-    const code = joinCode.trim().toUpperCase();
-    navigate(`/r/${code}`, { state: { name: name.trim() } });
+    navigate(`/r/${joinCode.trim().toUpperCase()}`, { state: { name: name.trim() } });
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
-      <div className="w-full max-w-md space-y-8 px-6">
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight">🎬 Watch Party</h1>
-          <p className="mt-2 text-gray-400">
-            Watch movies together, right in your browser.
-          </p>
-        </div>
+    <main className="dashboard-shell min-h-screen text-white">
+      <div className="dashboard-glow" aria-hidden="true" />
+      <div className="relative mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
+        <header className="flex items-center justify-between border-b border-white/[0.08] pb-5">
+          <a href="#top" className="text-white no-underline"><Brand /></a>
+          <a href="#how-it-works" className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-white/25 hover:text-white">How it works <span aria-hidden="true">↗</span></a>
+        </header>
 
-        {/* Name input */}
-        <div className="space-y-4 rounded-xl bg-gray-900 p-6 shadow-lg">
+        <section id="top" className="grid gap-12 pb-20 pt-14 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:pb-24 lg:pt-20">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-300">
-              Your name
-            </label>
-            <input
-              id="name"
-              type="text"
-              maxLength={30}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter your name"
-              className="mt-1 w-full rounded-lg bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/[0.07] px-3 py-1.5 text-xs font-medium text-cyan-100"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> A little closer, wherever you are</div>
+            <h1 className="max-w-2xl text-5xl font-semibold leading-[1.04] tracking-[-0.055em] sm:text-6xl lg:text-7xl">Your next movie night starts <span className="text-gradient">together.</span></h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-slate-400 sm:text-lg">A private room for two. Stream a movie from your device, sync playback, and make the distance feel a little smaller.</p>
+
+            <div className="mt-9 grid max-w-xl grid-cols-3 gap-3" aria-label="Nextseat highlights">
+              {[['02', 'people per room'], ['P2P', 'direct streaming'], ['0', 'uploads stored']].map(([value, label]) => <div key={label} className="dashboard-stat"><span className="text-lg font-semibold text-white">{value}</span><span className="mt-1 text-xs text-slate-500">{label}</span></div>)}
+            </div>
           </div>
 
-          {/* Headphones notice */}
-          <p className="text-xs text-gray-500">
-            🎧 Use headphones to avoid echo during voice chat.
-          </p>
-        </div>
+          <section className="dashboard-card mx-auto w-full max-w-lg p-6 sm:p-8" aria-labelledby="start-title">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Your private screening</p><h2 id="start-title" className="mt-2 text-2xl font-semibold tracking-tight">Let’s get you in</h2></div>
+              <div className="flex -space-x-2" aria-hidden="true"><span className="avatar-dot">✦</span><span className="avatar-dot avatar-dot-alt">♡</span></div>
+            </div>
 
-        {/* Create Room */}
-        <div className="rounded-xl bg-gray-900 p-6 shadow-lg">
-          <button
-            onClick={handleCreate}
-            disabled={!canCreate || loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? 'Creating…' : 'Create Room'}
-          </button>
-        </div>
+            <label htmlFor="name" className="mb-2 block text-sm font-medium text-slate-300">What should we call you?</label>
+            <input id="name" type="text" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="dashboard-input w-full" />
+            <button onClick={handleCreate} disabled={!canCreate || loading} className="primary-action mt-4 w-full">{loading ? 'Creating your room…' : <><span>Create a room</span><span aria-hidden="true">→</span></>}</button>
 
-        {/* Divider */}
-        <div className="flex items-center gap-4">
-          <div className="h-px flex-1 bg-gray-800" />
-          <span className="text-sm text-gray-500">or join with a code</span>
-          <div className="h-px flex-1 bg-gray-800" />
-        </div>
+            <div className="my-6 flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-600"><span className="h-px flex-1 bg-white/[0.08]" />or join a friend<span className="h-px flex-1 bg-white/[0.08]" /></div>
+            <form onSubmit={handleJoin}>
+              <label htmlFor="join-code" className="mb-2 block text-sm font-medium text-slate-300">Have an invite code?</label>
+              <div className="flex gap-2"><input id="join-code" type="text" maxLength={6} value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-HJ-KM-NP-Z2-9]/g, '').slice(0, 6))} placeholder="6 character code" className="dashboard-input min-w-0 flex-1 font-mono uppercase tracking-[0.2em]" /><button type="submit" disabled={!canJoin} className="secondary-action">Join <span aria-hidden="true">↗</span></button></div>
+            </form>
+            {error && <p role="alert" className="mt-4 text-sm text-rose-300">{error}</p>}
+            <p className="mt-5 text-xs leading-5 text-slate-500">Headphones make voice chat sound better. Your video is sent peer to peer and is never uploaded to this app.</p>
+          </section>
+        </section>
 
-        {/* Join Room */}
-        <form
-          onSubmit={handleJoin}
-          className="rounded-xl bg-gray-900 p-6 shadow-lg"
-        >
-          <div className="flex gap-3">
-            <input
-              type="text"
-              maxLength={6}
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-HJ-KM-NP-Z2-9]/g, '').slice(0, 6))}
-              aria-label="Six-character room code"
-              placeholder="ROOM CODE"
-              className="flex-1 rounded-lg bg-gray-800 px-4 py-2.5 font-mono text-lg tracking-widest text-white placeholder-gray-500 uppercase focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-            <button
-              type="submit"
-              disabled={!canJoin}
-              className="rounded-lg bg-green-600 px-6 py-2.5 font-semibold text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Join
-            </button>
-          </div>
-        </form>
-
-        {/* Error */}
-        {error && (
-          <p className="text-center text-sm text-red-400">{error}</p>
-        )}
+        <section id="how-it-works" className="border-t border-white/[0.08] py-12 sm:py-14">
+          <div className="mb-7 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Simple by design</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Your watch party, in three steps</h2></div><p className="max-w-sm text-sm leading-6 text-slate-500">No account or downloads. Just you, your friend, and something good to watch.</p></div>
+          <ol className="grid gap-3 md:grid-cols-3">{steps.map((step) => <li key={step.number} className="guide-step"><span className="text-xs font-semibold tracking-[0.16em] text-cyan-300">{step.number}</span><h3 className="mt-5 text-base font-semibold text-slate-100">{step.title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{step.detail}</p></li>)}</ol>
+        </section>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] py-5 text-xs text-slate-600"><span>Made for nights in, together.</span><span>Private rooms · peer-to-peer video · two people</span></footer>
       </div>
-    </div>
+    </main>
   );
 }

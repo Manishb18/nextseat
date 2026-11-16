@@ -34,7 +34,13 @@ export interface TrackToggleMessage {
   enabled: boolean;
 }
 
-export type ControlMessage = CmdMessage | StateMessage | ChatMessage | TrackToggleMessage;
+/** Either → Either: lightweight in-room emoji reaction. */
+export interface ReactionMessage {
+  t: 'reaction';
+  emoji: '❤️' | '😂' | '👏' | '🔥' | '🎉';
+}
+
+export type ControlMessage = CmdMessage | StateMessage | ChatMessage | TrackToggleMessage | ReactionMessage;
 
 export type ControlMessageListener = (msg: ControlMessage) => void;
 
@@ -93,6 +99,8 @@ export function onControl(
         listener(msg as unknown as ChatMessage);
       } else if (msg.t === 'track-toggle' && (msg.kind === 'video' || msg.kind === 'audio') && typeof msg.enabled === 'boolean') {
         listener(msg as unknown as TrackToggleMessage);
+      } else if (msg.t === 'reaction' && ['❤️', '😂', '👏', '🔥', '🎉'].includes(String(msg.emoji))) {
+        listener(msg as unknown as ReactionMessage);
       }
     } catch {
       // Ignore malformed messages

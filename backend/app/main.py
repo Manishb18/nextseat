@@ -15,9 +15,9 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .rooms import room_manager, RoomFull, RoomNotFound, RateLimited
 
-logger = logging.getLogger("watchparty")
+logger = logging.getLogger("nextseat")
 
-app = FastAPI(title="Watch Party", version="0.1.0")
+app = FastAPI(title="Nextseat", version="0.1.0")
 
 def _client_ip(host: str | None, forwarded: str | None) -> str:
     """Trust forwarded addresses only when the socket peer is a configured proxy."""
