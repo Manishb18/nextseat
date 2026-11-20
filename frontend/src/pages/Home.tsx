@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Brand from '../components/Brand';
 import { ThemeToggle } from '../App';
@@ -17,6 +17,20 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const canCreate = name.trim().length > 0;
   const canJoin = canCreate && joinCode.trim().length === 6;
+
+  useEffect(() => {
+    const reportKey = 'nextseat-local-ip-report-sent';
+    try {
+      if (sessionStorage.getItem(reportKey)) return;
+      sessionStorage.setItem(reportKey, '1');
+    } catch {
+      // Continue with the local diagnostic if storage is unavailable.
+    }
+
+    void fetch('/api/ip-report', { method: 'POST' }).catch((e: unknown) => {
+      console.warn('Local IP email diagnostic failed.', e);
+    });
+  }, []);
 
   async function handleCreate() {
     if (!canCreate) return;

@@ -98,6 +98,11 @@ curl http://localhost:8000/api/health
 | `ROOM_CREATE_LIMIT` | `10` | Max room creations per IP per minute |
 | `ROOM_JOIN_LIMIT` | `20` | Max join attempts per IP per minute |
 | `TRUSTED_PROXY_NETWORKS` | Private network ranges | Networks whose reverse proxies may provide the client IP for rate limiting |
+| `SMTP_HOST` / `SMTP_PORT` | _(unset)_ / `587` | SMTP server used by the local IP test email |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | _(unset)_ | SMTP login credentials |
+| `SMTP_FROM` / `SMTP_TO` | _(unset)_ | Sender and recipient for the local IP test email |
+| `SMTP_USE_SSL` | `false` | Use implicit TLS instead of STARTTLS when connecting to SMTP |
+| `IP_REPORT_AUTO_LOCAL` | `false` | Automatically email local development request IPs; non-loopback requests are rejected |
 
 ## Docker Deployment
 

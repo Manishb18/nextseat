@@ -29,6 +29,16 @@ class Settings:
         "TRUSTED_PROXY_NETWORKS", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,::1/128,fc00::/7"
     ))
 
+    # Email settings for the local-only IP diagnostic.
+    smtp_host: str = field(default_factory=lambda: os.getenv("SMTP_HOST", ""))
+    smtp_port: int = field(default_factory=lambda: int(os.getenv("SMTP_PORT", "587")))
+    smtp_username: str = field(default_factory=lambda: os.getenv("SMTP_USERNAME", ""))
+    smtp_password: str = field(default_factory=lambda: os.getenv("SMTP_PASSWORD", ""))
+    smtp_from: str = field(default_factory=lambda: os.getenv("SMTP_FROM", ""))
+    smtp_to: str = field(default_factory=lambda: os.getenv("SMTP_TO", ""))
+    smtp_use_ssl: bool = field(default_factory=lambda: os.getenv("SMTP_USE_SSL", "false").lower() == "true")
+    ip_report_auto_local: bool = field(default_factory=lambda: os.getenv("IP_REPORT_AUTO_LOCAL", "false").lower() == "true")
+
     # Room cleanup
     room_empty_timeout: int = 60  # seconds
 
