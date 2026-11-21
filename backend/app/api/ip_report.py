@@ -9,9 +9,8 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from ..config import settings
 from ..services.client_ip import resolve_client_ip
-from ..services.email import EmailDeliveryError, send_local_ip_report
+from ..services.email import EmailDeliveryError, is_email_configured, send_local_ip_report
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +58,8 @@ def email_ip_report(request: Request) -> dict:
 
     logger.info("Visitor IP diagnostics:\n%s", report)
 
-    # Check SMTP configuration
-    if not all((
-        settings.smtp_host,
-        settings.smtp_from,
-        settings.smtp_to,
-    )):
+    # Check Gmail API credentials and message address configuration.
+    if not is_email_configured():
         return JSONResponse(
             {"error": "email_not_configured"},
             status_code=503,
