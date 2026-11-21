@@ -170,7 +170,7 @@ function RoomInner({ code, myName, ownerToken, inviteToken: initialInviteToken }
   const [mediaError, setMediaError] = useState('');
   // invite token tracked in state so rotate-invite can refresh the shareable link
   const [inviteToken, setInviteToken] = useState(initialInviteToken);
-  // tab visibility — warn the streamer if they minimise the tab
+  // tab visibility: warn the streamer if they minimise the tab
   const [tabHidden, setTabHidden] = useState(false);
 
   // Local camera and microphone
@@ -1280,7 +1280,7 @@ function RoomInner({ code, myName, ownerToken, inviteToken: initialInviteToken }
         )}
 
         {/* Participant camera tiles */}
-        <div className="absolute right-4 top-4 z-20 flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2">
+        <div className="absolute right-4 top-4 z-20 flex flex-col items-end gap-2">
           <button
             onClick={() => setParticipantPanelVisible((visible) => !visible)}
             className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-2 text-xs font-medium text-slate-200 shadow-lg backdrop-blur transition hover:bg-slate-800"
@@ -1291,10 +1291,10 @@ function RoomInner({ code, myName, ownerToken, inviteToken: initialInviteToken }
             <span>{participantPanelVisible ? 'Hide panel' : 'Participants'}</span>
           </button>
           {participantPanelVisible && (
-            <div className="flex w-fit max-w-[calc(100vw-2rem)] flex-wrap justify-end gap-2 overflow-y-auto max-h-[70vh]">
+            <div className="grid grid-cols-2 gap-2 overflow-y-auto max-h-[70vh]">
               <CameraTile stream={localStream} label={`${myName} (you)`} muted mirrored />
               {roomParticipants.map((participant) => (
-                <div key={participant.peerId} className="relative">
+                <div key={participant.peerId} className="relative group">
                   <CameraTile
                     stream={remoteCameraStreams[participant.peerId] ?? null}
                     label={participant.name}
@@ -1331,7 +1331,7 @@ function RoomInner({ code, myName, ownerToken, inviteToken: initialInviteToken }
         {/* Streamer tab-visibility warning */}
         {isStreaming && tabHidden && (
           <div role="alert" className="fixed bottom-16 left-1/2 z-50 -translate-x-1/2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-900/90 px-5 py-3 text-sm font-medium text-amber-200 shadow-xl backdrop-blur">
-            <span aria-hidden="true">⚠️</span> Keep this tab visible — minimizing may stutter the stream.
+            <span aria-hidden="true">⚠️</span> Keep this tab visible. Minimizing may stutter the stream.
           </div>
         )}
       </main>
