@@ -5,7 +5,7 @@ import { ThemeToggle } from '../App';
 
 const steps = [
   { number: '01', title: 'Create a private room', detail: 'Start a room and share its invite link. Only people with the link can join.' },
-  { number: '02', title: 'Invite your watch partner', detail: 'Two people connect directly in a private peer-to-peer room.' },
+  { number: '02', title: 'Invite your people', detail: 'Up to five people connect directly in a private peer-to-peer room.' },
   { number: '03', title: 'Share and press play', detail: 'The host chooses a compatible MP4 or WebM file. Then pause and seek together in sync.' },
 ];
 
@@ -77,10 +77,10 @@ export default function Home() {
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/[0.07] px-3 py-1.5 text-xs font-medium text-cyan-100"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Movie night, wherever your friends are</div>
             <h1 className="max-w-2xl text-5xl font-semibold leading-[1.04] tracking-[-0.055em] sm:text-6xl lg:text-7xl">Pick a movie. Bring your <span className="text-gradient">people.</span></h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-slate-400 sm:text-lg">Share a movie from your device and watch it together. Rooms are private, two-person, and peer-to-peer.</p>
+            <p className="mt-6 max-w-xl text-base leading-7 text-slate-400 sm:text-lg">Share a movie from your device and watch it together. Rooms are private, invite-only, and peer-to-peer.</p>
 
             <div className="mt-9 grid max-w-xl grid-cols-3 gap-3" aria-label="Nextseat highlights">
-              {[['02', 'people per room'], ['P2P', 'direct streaming'], ['0', 'uploads stored']].map(([value, label]) => <div key={label} className="dashboard-stat"><span className="text-lg font-semibold text-white">{value}</span><span className="mt-1 text-xs text-slate-500">{label}</span></div>)}
+              {[['05', 'people per room'], ['P2P', 'direct streaming'], ['0', 'uploads stored']].map(([value, label]) => <div key={label} className="dashboard-stat"><span className="text-lg font-semibold text-white">{value}</span><span className="mt-1 text-xs text-slate-500">{label}</span></div>)}
             </div>
 
             <div className="cinema-scene" aria-hidden="true">
@@ -120,7 +120,7 @@ export default function Home() {
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">How it works</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Three steps to movie night</h2></div><p className="max-w-sm text-sm leading-6 text-slate-500">No account or downloads. Invite up to four people, choose a movie, and press play.</p></div>
           <ol className="grid gap-3 md:grid-cols-3">{steps.map((step) => <li key={step.number} className="guide-step"><span className="text-xs font-semibold tracking-[0.16em] text-cyan-300">{step.number}</span><h3 className="mt-5 text-base font-semibold text-slate-100">{step.title}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{step.detail}</p></li>)}</ol>
         </section>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] py-5 text-xs text-slate-600"><span>Made for nights in, together.</span><span>Private rooms · peer-to-peer video · 2 people per room</span><span>Users are responsible for the content they share.</span></footer>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] py-5 text-xs text-slate-600"><span>Made for nights in, together.</span><span>Private rooms · peer-to-peer video · 5 people per room</span><span>Users are responsible for the content they share.</span></footer>
       </div>
     </main>
   );

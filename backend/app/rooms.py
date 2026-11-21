@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 # Characters that avoid look-alikes (no 0/O, 1/I/L)
 ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 ROOM_CODE_LENGTH = 6
-MAX_ROOM_PARTICIPANTS = 2  # Two-person private rooms
+MAX_ROOM_PARTICIPANTS = 5
 
 
 @dataclass
