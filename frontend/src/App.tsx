@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import Home from './pages/Home';
+import Welcome from './pages/Welcome';
 import Room from './pages/Room';
 import Brand from './components/Brand';
 
@@ -39,7 +40,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider><Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Welcome />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/r/:code" element={<Room />} />
         <Route path="*" element={<NotFound />} />
       </Routes></ThemeProvider>
