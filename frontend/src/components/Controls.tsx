@@ -31,6 +31,13 @@ export default function Controls({
   onQualityChange,
   showQuality,
 }: ControlsProps) {
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  const mobileHint = nav.userAgentData?.mobile;
+  const isMobileDevice = mobileHint ?? (
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+
   return (
     <div className="flex items-center justify-center gap-3 border-t border-gray-800 bg-gray-900 px-6 py-3">
       {/* Camera toggle */}
@@ -46,9 +53,15 @@ export default function Controls({
         <Icon name={cameraOn ? 'camera' : 'camera-off'} size={19} />
       </button>
 
-      {cameraOn && (
-        <button type="button" onClick={onSwitchCamera} title="Switch front/back camera" aria-label={cameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'} className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-xl transition hover:bg-gray-600">
-          â†»
+      {cameraOn && isMobileDevice && (
+        <button
+          type="button"
+          onClick={onSwitchCamera}
+          title={cameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'}
+          aria-label={cameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'}
+          className="flex h-10 items-center justify-center whitespace-nowrap rounded-full bg-gray-700 px-3 text-xs font-medium text-white transition hover:bg-gray-600"
+        >
+          {cameraFacing === 'user' ? 'Back camera' : 'Front camera'}
         </button>
       )}
 

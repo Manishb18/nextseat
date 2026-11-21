@@ -4,36 +4,36 @@ This guide explains the product from first principles, maps the intended design 
 
 ## 1. The idea in one minute
 
-Watch Party lets two people watch a movie together in a private browser room. One person selects a video file stored on their own computer. Their browser plays and captures that video, then sends the resulting audio/video stream directly to the other person's browser using WebRTC. Both users can coordinate playback, chat, and optionally share camera and microphone.
+Watch Party lets up to five people watch a movie together in a private browser room. One person selects a video file stored on their own computer. Their browser plays and captures that video, then sends the resulting audio/video stream directly to each other participant using WebRTC. Participants can coordinate playback, chat, and optionally share camera and microphone.
 
 The central product decision is that the movie is **not uploaded to the application server**. The server helps the browsers find and connect to each other; it does not host, store, or relay the movie in the normal direct-connection case. A TURN server may relay encrypted WebRTC packets when network restrictions prevent a direct peer-to-peer connection.
 
-In plain language: the backend is the introduction and room attendant; the two browsers carry the actual movie conversation.
+In plain language: the backend introduces up to five browsers; the participants' browsers carry the actual movie stream.
 
 ## 2. Who it is for and what problem it solves
 
-The target use case is two people who have a compatible local video file and want to watch it together remotely without uploading it to a public service or relying on a shared streaming catalog. A room code makes joining simple, and synchronized controls make the experience feel collaborative.
+The target use case is up to five people who want to watch a compatible local video file together remotely without uploading it to a public service or relying on a shared streaming catalog. A room code makes joining simple, and synchronized controls make the experience feel collaborative.
 
 ### Product goals
 
-- Two people can create/join a private room quickly using a short code or link.
-- Either person can share a locally stored movie.
-- Playback requests from either participant affect the shared source playback.
+- Up to five people can create/join a private room quickly using a short code or link.
+- Any participant can share a locally stored movie.
+- Playback requests from any participant affect the shared source playback.
 - Camera and microphone are optional and off by default.
 - The application works across ordinary home networks where possible, and can fall back to TURN relay.
 
 ### MVP non-goals
 
-The PRD excludes accounts, payments, public room discovery, more than two participants, server-hosted movies, recording, built-in transcoding, subtitles, host migration, and mobile movie streaming. These exclusions keep the first version small and keep server bandwidth/storage requirements low.
+The PRD excludes accounts, payments, public room discovery, rooms larger than five participants, server-hosted movies, recording, built-in transcoding, subtitles, host migration, and mobile movie streaming. These exclusions keep the first version small and keep server bandwidth/storage requirements low.
 
 ## 3. User journey
 
 1. The host enters a display name and creates a room.
 2. The app generates a six-character room code and a creator token; the host shares the code/link.
-3. The second participant enters a name and joins. A third participant is rejected because rooms have a two-person limit.
-4. Both browsers establish signaling through the FastAPI server, then negotiate a WebRTC connection.
-5. Either person may enable camera/microphone. Either may select a compatible local movie and become its streamer.
-6. The streamer browser captures its playing `<video>` element. WebRTC sends its audio/video tracks to the other browser.
+3. Up to four additional participants enter a name and join. A sixth participant is rejected because rooms have a five-person limit.
+4. All browsers establish signaling through the FastAPI server, then negotiate one WebRTC connection per other participant.
+5. Participants may enable camera/microphone. Any participant may select a compatible local movie and become its streamer.
+6. The streamer browser captures its playing `<video>` element. WebRTC sends its audio/video tracks directly to each other participant.
 7. Playback requests, authoritative playback state, chat, and camera toggle metadata travel over a WebRTC data channel.
 8. Leaving/disconnecting updates room presence; empty rooms are eventually cleaned up. The creator can explicitly end the room.
 
@@ -102,16 +102,16 @@ The backend relays the signaling payload but does not interpret the media. Once 
 2. Backend rate-limits creation by client IP and creates a collision-checked six-character code with a creator token.
 3. A browser opens `/ws/{code}` and sends a `join` message with display name and reconnect identity.
 4. The room manager enforces room existence, capacity, and join rate limits.
-5. The server tells the joining browser its peer ID, whether it is the polite negotiation peer, and current peers; it notifies the other participant.
-6. WebSocket messages of type `signal` are relayed to the other room member. `leave`, heartbeat, and room deletion are handled separately.
+5. The server tells the joining browser its peer ID and the current participant list, then notifies the existing participants.
+6. WebSocket messages of type `signal` are routed to the intended peer. `leave`, heartbeat, and room deletion are handled separately.
 
 The code alphabet omits easily confused characters. Room codes are convenience identifiers, not user accounts; creator authorization uses a separate secret token.
 
 ### Establish a WebRTC connection
 
-The frontend fetches ICE configuration, creates one `RTCPeerConnection` for the two-person room, and exchanges its descriptions and candidates over signaling. `onnegotiationneeded` supports later track additions, such as starting a movie after the initial connection.
+The frontend fetches ICE configuration and creates one targeted `RTCPeerConnection` per other participant. The backend routes each SDP/ICE message to its intended peer. The same pairwise process runs for every participant in the room. `onnegotiationneeded` supports later track additions, such as starting a movie after the initial connection.
 
-The implementation uses the **perfect negotiation pattern**. The two peers have polite/impolite roles so simultaneous offers do not permanently collide: one side can ignore a colliding offer while the polite side can accept/roll back as needed. This matters because cameras and movie tracks can be added after the initial connection.
+The implementation uses the **perfect negotiation pattern**. Each peer pair has polite/impolite roles so simultaneous offers do not permanently collide: one side can ignore a colliding offer while the polite side can accept/roll back as needed. This matters because cameras and movie tracks can be added after the initial connection.
 
 ### Share a local movie
 
@@ -152,9 +152,9 @@ The `control` data channel carries typed messages such as playback commands (`cm
 
 The detailed product brief lives in [`docs/PRD.md`](PRD.md). Its core requirement groups are:
 
-- **Rooms and presence:** create/join by code or link, two-person maximum, empty-room expiration, reconnect support.
+- **Rooms and presence:** create/join by code or link, five-person maximum, empty-room expiration, reconnect support.
 - **Media:** camera/mic off by default; local movie sharing; only one active movie streamer at a time; compatibility feedback; viewer playback controls.
-- **Playback:** either participant may request play/pause/seek, with streamer as authority.
+- **Playback:** any participant may request play/pause/seek, with streamer as authority.
 - **Communication:** text chat and optional camera/mic.
 - **Network experience:** show connection/quality information, recover from temporary disconnects, support TURN fallback.
 - **Abuse controls:** rate-limit room creation/join and avoid public room listings.
@@ -162,7 +162,7 @@ The detailed product brief lives in [`docs/PRD.md`](PRD.md). Its core requiremen
 
 ### Acceptance-test intent
 
-The PRD/README describe staged acceptance: health/frontend work; two-tab room signaling and third-person rejection; camera/mic; compatible movie and audio; synchronized controls/chat; then cross-network and forced-relay endurance checks. These describe intended validation scenarios, not a claim that every scenario has been performed in production.
+The PRD/README describe staged acceptance: health/frontend work; room signaling up to the five-person limit; camera/mic; compatible movie and audio; synchronized controls/chat; then cross-network and forced-relay endurance checks. These describe intended validation scenarios, not a claim that every scenario has been performed in production.
 
 ## 9. Repository map
 
@@ -201,7 +201,7 @@ The in-memory room store creates an important scaling constraint: a single app p
 - **Autoplay:** browsers may require a user gesture to play remote media with sound.
 - **Background tabs:** throttling can affect capture smoothness.
 - **Volatile rooms:** process restart loses all in-memory rooms; multiple replicas do not share room state.
-- **Capacity:** mesh-style peer-to-peer is suitable for two people; it does not scale efficiently to large groups. An SFU would be the natural later architecture for group rooms.
+- **Capacity:** five-person rooms use a peer mesh. A movie sender uploads a separate copy to each of up to four viewers, so the sender's upload bandwidth and CPU are the practical limits. An SFU is the next step for larger groups or consistently lower sender load.
 - **Privacy model:** not uploading to the app server reduces server-side exposure, but peer media still travels over the network and may use a TURN relay. Room codes and rate limits are not a full identity or abuse-prevention system.
 
 ## 12. Concepts to know for an interview
@@ -242,7 +242,7 @@ The in-memory room store creates an important scaling constraint: a single app p
 
 ## 13. A concise interview narrative
 
-> “I built a two-person browser watch party for local video files. The product goal was to let friends watch together without uploading movie files to our backend. FastAPI creates short-lived private rooms and provides WebSocket signaling, while the browsers use WebRTC for peer-to-peer movie, camera, microphone, and data-channel traffic. ICE tries direct connectivity with STUN and falls back to TURN when NAT or firewall rules block it. The streamer browser captures its local video element, and its player is the source of truth for playback requests. The MVP uses in-memory room state to keep the system small, with the known trade-off that it is single-instance and volatile. The hardest areas are browser codec/capture compatibility, negotiation when tracks are added later, NAT traversal, reconnect behavior, and balancing bitrate against upload capacity.”
+> “I built a five-person browser watch party for local video files. FastAPI creates short-lived private rooms and provides WebSocket signaling, while the browsers use a peer mesh for movie, camera, microphone, and data-channel traffic. The streamer sends one copy to each viewer, so group size is capped at five and aggregate upload is bounded. The MVP uses in-memory room state, with the known trade-off that it is single-instance and volatile. The hardest areas are browser codec/capture compatibility, negotiation when tracks are added later, NAT traversal, TURN relay availability, reconnect behavior, and balancing bitrate against upload capacity.”
 
 Use “I” only for work you personally did; otherwise present it as the project design. Be ready to discuss what you implemented, what you tested, and what remains a proposed next step.
 

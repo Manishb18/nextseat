@@ -71,7 +71,7 @@ export default function CameraTile({
   }, [stream, videoEnabled]);
 
   return (
-    <div className={`group relative h-32 w-44 overflow-hidden rounded-xl border border-white/5 shadow-lg ${hasVideo ? 'bg-black' : 'bg-slate-900'}`}>
+    <div className={`group relative h-28 w-44 shrink-0 overflow-hidden rounded-xl border border-white/5 shadow-lg sm:h-32 ${hasVideo ? 'bg-black' : 'bg-slate-900'}`}>
       <video
         ref={videoRef}
         autoPlay

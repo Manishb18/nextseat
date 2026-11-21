@@ -1,24 +1,24 @@
 # Watch Party MVP: PRD, Architecture and Build Prompt
 
-Version 0.1 · 15 November 2026 · Scope: 2-person rooms · Confidence tags: \[Certain\] hard evidence, \[Likely\] strong inference, \[Guessing\] gap-filling
+Version 0.2 · 21 November 2026 · Scope: up to five-person rooms · Confidence tags: \[Certain\] hard evidence, \[Likely\] strong inference, \[Guessing\] gap-filling
 
 ## 1. Product summary
 
-A browser-based private room for exactly two people. One person picks a movie file from their own computer, and the other person watches it live in their browser, with optional webcams and voice. The movie is never uploaded to any server. It travels directly from one browser to the other.
+A browser-based private room for up to five people. One person picks a movie file from their own computer, and the other participants watch it live in their browsers, with optional webcams and voice. The movie is never uploaded to an application server. It travels directly from the streamer's browser to each viewer.
 
 **Goals**
 
-- Two people join a room by code and watch a local movie together within one minute.
-- Playback is shared: when one person pauses, both are paused.
+- Up to five people join a room by code and watch a local movie together within one minute.
+- Playback is shared: when one person pauses, everyone is paused.
 - Camera and mic are optional and can be hidden at any time.
 
 **Non-goals for the MVP**
 
-- Accounts, login, payments, public rooms, more than 2 people, subtitles, mobile streaming, recording, hosting movies on a server.
+- Accounts, login, payments, public rooms, more than 5 people, subtitles, mobile streaming, recording, hosting movies on a server.
 
 ## 2. Key decisions
 
-**Is a backend required?** Yes, but only a tiny one. Two browsers cannot find each other without a rendezvous point. The backend does signaling only: it introduces the two browsers and passes connection messages between them. Video never touches it. \[Certain\]
+**Is a backend required?** Yes, but only a tiny one. Browsers cannot find each other without a rendezvous point. The backend does signaling only: it introduces up to five browsers and routes connection messages between each peer pair. Video never touches it. \[Certain\]
 
 A zero-backend option exists (a hosted broker such as PeerJS Cloud), but you would depend on a third party and still need a TURN server. Use it for a throwaway spike at most. \[Likely\]
 
@@ -38,12 +38,12 @@ A zero-backend option exists (a hosted broker such as PeerJS Cloud), but you wou
 
 ## 3. User flow
 
-1. Person A opens the site, enters a name, clicks Create Room, and gets a 6-character code and a link.
-2. Person B opens the link (or enters the code) and enters a name.
-3. Both land in the room. Camera and mic are off by default.
-4. Either person clicks Share a Movie and picks a local file. That person becomes the streamer.
-5. The other person sees the movie player. Camera tiles float over a corner and can be hidden.
-6. Either person can request play, pause, or seek. The streamer's player executes it.
+1. A host opens the site, enters a name, clicks Create Room, and gets a 6-character code and a link.
+2. Up to four guests open the link (or enter the code) and enter their names.
+3. Everyone lands in the room. Camera and mic are off by default.
+4. Any participant clicks Share a Movie and picks a local file. That person becomes the streamer.
+5. Other participants see the movie player. Camera tiles show each participant's optional webcam.
+6. Everyone can request play, pause, or seek. The streamer's player executes each request.
 7. Stop Sharing ends the movie. Leaving closes the room after a short grace period.
 
 ## 4. Functional requirements
@@ -51,14 +51,14 @@ A zero-backend option exists (a hosted broker such as PeerJS Cloud), but you wou
 **Rooms**
 
 - FR1. Create a room via `POST /api/rooms`. It returns a 6-character code (letters and digits, excluding look-alikes such as 0/O and 1/I).
-- FR2. Join via code or link `/r/<code>`, with a display name. Maximum 2 participants. A third visitor sees "Room is full".
+- FR2. Join via code or link `/r/<code>`, with a display name. Maximum 5 participants. A sixth visitor sees "Room is full".
 - FR3. A room is deleted 60 seconds after it becomes empty.
 
 **Media**
 
 - FR4. Camera and mic are off by default. Toggles are on the join screen and in the room.
-- FR5. Each user can hide the remote camera tile and mute remote voice. Both are local-only actions.
-- FR6. Either user can start sharing a movie. Only one streamer at a time. A Stop Sharing button ends it.
+- FR5. Each participant can toggle their own camera and microphone. Camera tiles identify every participant separately.
+- FR6. Any participant can start sharing a movie. Only one streamer is active at a time. A Stop Sharing button ends it.
 - FR7. The movie file is validated before streaming (see problem P1).
 - FR8. The viewer gets a player with fullscreen and volume.
 
@@ -105,8 +105,8 @@ A zero-backend option exists (a hosted broker such as PeerJS Cloud), but you wou
 
 - Client to server: `{type:"join", name}`, `{type:"signal", data:{...}}`, `{type:"leave"}`.
 - Server to client: `{type:"joined", peerId, polite, peers}`, `{type:"peer-joined", name}`, `{type:"peer-left"}`, `{type:"room-full"}`, `{type:"signal", data:{...}}`.
-- The server only relays `signal` payloads to the other peer. It never inspects them.
-- The second joiner is the "polite" peer, the first is "impolite" (see perfect negotiation below).
+- The server routes each `signal` payload to its target peer. It never inspects SDP or ICE contents.
+- Each peer pair assigns polite/impolite negotiation roles consistently using peer IDs (see perfect negotiation below).
 
 ### 5.2 Frontend
 
@@ -124,7 +124,7 @@ frontend/src/
 
 ### 5.3 WebRTC design
 
-- One `RTCPeerConnection` per room, since there are only two people.
+- One targeted `RTCPeerConnection` per other participant. Five-person rooms use a peer mesh; each viewer gets a direct copy from the streamer.
 - Use the **perfect negotiation pattern** (documented on MDN). The movie tracks are added after the call starts, so renegotiation must work in both directions without collisions. \[Certain\]
 - **Streamer capture:** `const stream = videoEl.captureStream()`, falling back to `mozCaptureStream()`. In Chrome the captured stream can have no tracks until playback starts, so listen to `stream.onaddtrack` and add tracks to the connection as they appear. \[Likely\]
 - **Telling streams apart:** before adding movie tracks, send `{type:"stream-meta", streamId, kind:"movie"}` over signaling. On the viewer, `ontrack` uses `event.streams[0].id` to decide whether a track belongs to the movie or to the camera.
@@ -168,15 +168,15 @@ frontend/src/
 
 **Phase 0: scaffolding.** FastAPI and Vite projects, dev proxy, health check. Done when: `GET /api/health` returns ok and the frontend loads.
 
-**Phase 1: rooms and signaling.** Create and join by code, max 2, presence. Done when: two browser tabs see each other's names, and a third tab gets "room full".
+**Phase 1: rooms and signaling.** Create and join by code, max 5, presence. Done when: up to five browser tabs see room membership and a sixth tab gets "room full".
 
-**Phase 2: camera and mic.** Perfect-negotiation connection, toggles, hide remote tile. Done when: two tabs on one machine, then two devices on one network, see and hear each other; toggling camera off removes the tile on the other side.
+**Phase 2: camera and mic.** Perfect-negotiation connections, toggles, participant camera tiles. Done when: up to five participants on one network can see and hear one another; toggling a camera off updates that participant's tile.
 
-**Phase 3: movie streaming.** File picker, validation, `captureStream`, stream to the viewer. Done when: a 720p H.264 MP4 plays on the viewer within 5 seconds of starting, with sound, and an MKV with HEVC shows the conversion help message.
+**Phase 3: movie streaming.** File picker, validation, `captureStream`, stream to all viewers. Done when: a 720p H.264 MP4 plays for every viewer within 5 seconds of starting, with sound, and an MKV with HEVC shows the conversion help message.
 
-**Phase 4: controls and polish.** Play, pause, seek from both sides, quality selector, connection badge, chat, ICE restart. Done when: viewer's pause pauses the streamer's player; unplugging Wi-Fi for 5 seconds and reconnecting resumes the stream.
+**Phase 4: controls and polish.** Play, pause, seek from any participant, quality selector, connection badge, chat, ICE restart. Done when: a viewer's pause pauses the streamer's player for everyone; unplugging Wi-Fi for 5 seconds and reconnecting resumes the stream.
 
-**Phase 5: deploy and real-world test.** HTTPS, TURN, Docker Compose. Done when: two people on different networks (for example one on a phone hotspot) watch 10 minutes without a freeze, and the forced-relay test also works.
+**Phase 5: deploy and real-world test.** HTTPS, TURN, Docker Compose. Done when: a five-person room across different networks (for example, with one participant on a phone hotspot) watches for 10 minutes without a freeze, and the forced-relay test also works.
 
 &#91;Guessing\] Phases 0 to 3 are a weekend or two with an AI agent. Phase 5 is where most surprises appear, so do a cross-network test as early as Phase 3.
 

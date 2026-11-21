@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
 
 interface MoviePlayerProps {
-  /** The MediaStream from the remote peer (viewer). */
+  /** The movie MediaStream received from the remote streamer. */
   stream?: MediaStream | null;
   /** If provided, this src is used directly (streamer playing local file). */
   src?: string;
   /** Whether this user IS the streamer (has local controls). */
   isController: boolean;
-  /** Whether the other peer currently has a movie track enabled. */
+  /** Whether the remote streamer currently has a movie track enabled. */
   streamActive?: boolean;
   controlsEnabled?: boolean;
   onPlay?: (time: number) => boolean | void;
@@ -103,7 +103,7 @@ export default function MoviePlayer({
       el.srcObject = stream;
       el.muted = false;
       el.play().catch(() => {
-        // Autoplay blocked — mute and retry, show overlay
+        // If autoplay is blocked, mute the video and try again.
         setSoundLocked(true);
         el.muted = true;
         void el.play();
@@ -269,7 +269,7 @@ export default function MoviePlayer({
         </button>
       )}
 
-      {/* Viewer controls — send commands to streamer */}
+      {/* Viewer controls send playback requests to the streamer. */}
       {!isController && !soundLocked && (
         <div className="absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-3 bg-gradient-to-t from-black/90 to-transparent p-4 pt-12">
           <button
@@ -304,7 +304,7 @@ export default function MoviePlayer({
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white gap-3">
           <span className="text-4xl">⏹</span>
           <p className="text-sm text-gray-300">
-            {streamActive ? 'Stream ended — click Play to request replay' : 'The other person stopped sharing'}
+            {streamActive ? 'The stream ended. Click Play to ask the streamer to restart it.' : 'The streamer stopped sharing.'}
           </p>
           <button
             onClick={handleViewerPlayPause}

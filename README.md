@@ -1,16 +1,16 @@
 # Nextseat
 
-A 2-person browser app for watching local movie files together via WebRTC. The movie streams peer-to-peer — it **never touches the server**. Only signaling messages pass through the backend.
+A browser app for watching local movie files together with up to five people via WebRTC. The movie streams peer-to-peer — it **never touches the server**. Only signaling messages pass through the backend.
 
 ## Features
 
-- 🎬 **Movie streaming** — pick a local MP4/WebM file; the other person sees it live
+- 🎬 **Movie streaming** — pick a local MP4/WebM file; up to four other people see it live
 - 🎥 **Camera + mic** — optional, toggleable, off by default  
-- 🕹️ **Synced playback** — pause/seek from either side, streamer is source of truth
+- 🕹️ **Synced playback** — everyone can request pause/seek; streamer is source of truth
 - 💬 **Text chat** — over the WebRTC data channel
 - 📡 **Connection badge** — live display of direct/relay, bitrate, RTT
 - 🔄 **Auto-reconnect** — ICE restart on network drops
-- 🔒 **Private rooms** — 6-character codes, max 2 people, rate-limited
+- 🔒 **Private rooms** — 6-character codes, max 5 people, rate-limited
 
 ## Development Setup
 
@@ -49,40 +49,42 @@ curl http://localhost:8000/api/health
 # → {"status":"ok"}
 ```
 
-### Phase 1 — Two-tab test (Rooms & Signaling)
+### Phase 1 — Room membership test (Rooms & Signaling)
 
 1. Open `http://localhost:5173` in **Tab A** — enter a name, click **Create Room**, copy the 6-character code.
 2. Open `http://localhost:5173` in **Tab B** — enter a name, paste the code, click **Join**.
-3. Both tabs should show each other's name.
-4. Open **Tab C** with the same code → should see "Room is full".
+3. Tabs A and B should show each other's names.
+4. Open **Tab C** with the same code → all three participants should be present.
+5. Open **Tabs D and E** with the same code → all five participants should be present.
+6. Open **Tab F** with the same code → should see "Room is full".
 
 ### Phase 2 — Camera/mic test
 
-1. Both tabs join the same room.
-2. Click the 📷 button on Tab A → Tab B should see the camera tile appear.
-3. Click 📷 again → tile disappears on Tab B.
-4. Try on two **different devices** on the same network.
+1. Up to five tabs join the same room.
+2. Turn on cameras from several tabs → each participant should see a tile for every other user with their camera on.
+3. Turn one camera off → that participant's tile should show Camera off.
+4. Try with multiple **different devices** on the same network.
 
 ### Phase 3 — Movie streaming test
 
-1. Both tabs in the same room.
+1. All participants join the same room.
 2. Tab A clicks **Share a Movie**, picks a 720p H.264 MP4.
-3. Tab B should see the movie playing within 5 seconds, with sound.
+3. Every other participant should see the movie playing within 5 seconds, with sound.
 4. Tab A picks an MKV with HEVC/AC3 → should see the ffmpeg conversion help message.
 
 ### Phase 4 — Controls test
 
-1. Both tabs watching a movie.
-2. Tab B (viewer) clicks **Pause** → Tab A's player pauses.
-3. Tab A (streamer) seeks to a different position → Tab B jumps to the same time.
+1. Participants watch the movie together.
+2. A viewer clicks **Pause** → the streamer's player pauses and playback updates for everyone.
+3. The streamer seeks to a different position → viewers jump to the same time.
 4. Change quality dropdown (480p/720p/1080p) → connection badge bitrate updates.
 5. Disconnect Wi-Fi for 5 seconds, reconnect → stream should resume automatically.
-6. Send chat messages from both sides.
+6. Send chat messages from different participants.
 
 ### Phase 5 — Cross-network test
 
 1. Deploy with Docker (see below).
-2. Person A on their home network, Person B on a phone hotspot.
+2. Participants join from different networks, including a phone hotspot.
 3. Watch 10 minutes without a freeze.
 4. Set `FORCE_RELAY=true` → connection badge shows "Relay", video still plays.
 

@@ -3,9 +3,9 @@
  *
  * The "perfect negotiation" pattern (see MDN docs) prevents offer collisions
  * when both sides try to renegotiate simultaneously. The key insight:
- * - The "impolite" peer (first joiner) ignores incoming offers when it's
+ * - The "impolite" peer ignores incoming offers when it's
  *   already creating its own offer.
- * - The "polite" peer (second joiner) rolls back its own offer and accepts
+ * - The "polite" peer rolls back its own offer and accepts
  *   the incoming one instead.
  *
  * This is essential for mid-call renegotiation (adding movie tracks).
@@ -15,6 +15,7 @@ import type { SignalingClient } from './signaling';
 
 export interface PeerManagerOptions {
   polite: boolean;
+  remotePeerId?: string;
   signaling: SignalingClient;
   onTrack?: (event: RTCTrackEvent) => void;
   onDataChannel?: (channel: RTCDataChannel) => void;
@@ -31,6 +32,7 @@ export class PeerManager {
   readonly pc: RTCPeerConnection;
   private polite: boolean;
   private signaling: SignalingClient;
+  private remotePeerId: string;
   private makingOffer = false;
   private ignoreOffer = false;
   private settingRemoteAnswer = false;
@@ -42,6 +44,7 @@ export class PeerManager {
   constructor(iceConfig: IceConfig, opts: PeerManagerOptions) {
     this.polite = opts.polite;
     this.signaling = opts.signaling;
+    this.remotePeerId = opts.remotePeerId ?? '';
 
     this.pc = new RTCPeerConnection({
       iceServers: iceConfig.iceServers,
@@ -54,7 +57,7 @@ export class PeerManager {
       try {
         this.makingOffer = true;
         await this.pc.setLocalDescription(); // implicitly creates an offer
-        this.signaling.sendSignal({ description: this.pc.localDescription });
+        this.signaling.sendSignal({ description: this.pc.localDescription }, this.remotePeerId);
       } catch (err) {
         console.error('[peer] negotiationneeded error', err);
       } finally {
@@ -64,7 +67,7 @@ export class PeerManager {
 
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) {
-        this.signaling.sendSignal({ candidate });
+        this.signaling.sendSignal({ candidate }, this.remotePeerId);
       }
     };
 
@@ -145,7 +148,7 @@ export class PeerManager {
 
         if (description.type === 'offer') {
           await this.pc.setLocalDescription(); // implicitly creates answer
-          this.signaling.sendSignal({ description: this.pc.localDescription });
+          this.signaling.sendSignal({ description: this.pc.localDescription }, this.remotePeerId);
         }
       } else if (data['candidate']) {
         const candidate = data['candidate'] as RTCIceCandidateInit;

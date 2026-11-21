@@ -151,8 +151,11 @@ export async function applyQualityToSender(
   sender: RTCRtpSender,
   quality: Quality,
   sourceHeight: number,
+  peerCount = 1,
 ): Promise<void> {
-  const { maxBitrate, targetHeight } = QUALITY_MAP[quality];
+  const { maxBitrate: qualityBitrate, targetHeight } = QUALITY_MAP[quality];
+  // Bound the streamer's aggregate movie upload as each mesh viewer gets one copy.
+  const maxBitrate = Math.min(qualityBitrate, Math.floor(8_000_000 / Math.max(1, peerCount)));
   const params = sender.getParameters();
 
   if (!params.encodings || params.encodings.length === 0) {

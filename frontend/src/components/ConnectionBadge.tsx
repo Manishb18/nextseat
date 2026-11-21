@@ -93,14 +93,14 @@ export default function ConnectionBadge({ pc }: ConnectionBadgeProps) {
   };
   const current = presentation[quality];
   const tips = quality === 'failed'
-    ? ['Try reconnecting to the room.', 'If it keeps failing, refresh both room tabs and rejoin.']
+    ? ['Try reconnecting to the room.', 'If it keeps failing, have everyone refresh and rejoin.']
     : quality === 'weak'
-      ? ['Ask the person sharing the movie to switch to 480p.', 'Pause other downloads or video calls on either network.', 'If you are on a VPN, try reconnecting without it.']
+      ? ['Ask the streamer to switch to 480p.', 'Pause other downloads or video calls on your network.', 'If you are on a VPN, try reconnecting without it.']
       : quality === 'fair'
         ? ['A relay connection can add a little delay.', 'Lowering the shared video quality can make playback smoother.']
         : quality === 'connecting'
-          ? ['Keep both room tabs open while the connection is being established.', 'If this takes more than a few seconds, try Reconnect.']
-          : ['Your peer connection looks healthy. Headphones help avoid audio echo.'];
+          ? ['Keep everyone in the room until connections are established.', 'If this takes more than a few seconds, try Reconnect.']
+          : ['Your connection looks healthy. Headphones help avoid audio echo.'];
 
   return (
     <details className="connection-popover">
@@ -113,9 +113,9 @@ export default function ConnectionBadge({ pc }: ConnectionBadgeProps) {
         <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-white">Connection details</p><span className="text-[11px] text-slate-500">Live</span></div>
         <dl className="connection-metrics">
           <div><dt>Route</dt><dd>{stats.path === 'direct' ? 'Direct peer link' : stats.path === 'relay' ? 'Relay connection' : failed ? 'Disconnected' : 'Negotiating'}</dd></div>
-          <div><dt>Round trip</dt><dd>{stats.rttMs === null ? '—' : `${stats.rttMs} ms`}</dd></div>
+          <div><dt>Round trip</dt><dd>{stats.rttMs === null ? 'N/A' : `${stats.rttMs} ms`}</dd></div>
           <div><dt>Video traffic</dt><dd>{stats.bitrateMbps === null ? 'Waiting for video' : `${stats.bitrateMbps} Mbps`}</dd></div>
-          <div><dt>Packet loss</dt><dd>{stats.packetLoss === null ? '—' : `${stats.packetLoss}%`}</dd></div>
+          <div><dt>Packet loss</dt><dd>{stats.packetLoss === null ? 'N/A' : `${stats.packetLoss}%`}</dd></div>
         </dl>
         <div className="connection-tips"><p className="text-xs font-semibold text-slate-200">{quality === 'good' ? 'You’re all set' : 'Try this'}</p><ul>{tips.map((tip) => <li key={tip}>{tip}</li>)}</ul></div>
       </div>
