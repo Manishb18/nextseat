@@ -1291,7 +1291,7 @@ function RoomInner({ code, myName, ownerToken, inviteToken: initialInviteToken }
             <span>{participantPanelVisible ? 'Hide panel' : 'Participants'}</span>
           </button>
           {participantPanelVisible && (
-            <div className="grid grid-cols-2 gap-2 overflow-y-auto max-h-[70vh]">
+            <div className={`grid gap-2 overflow-y-auto max-h-[70vh] ${roomParticipants.length === 0 ? 'grid-cols-1' : 'grid-cols-2'}`}>
               <CameraTile stream={localStream} label={`${myName} (you)`} muted mirrored />
               {roomParticipants.map((participant) => (
                 <div key={participant.peerId} className="relative group">
