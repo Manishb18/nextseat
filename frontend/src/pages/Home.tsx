@@ -75,6 +75,18 @@ export default function Home() {
             <div className="mt-9 grid max-w-xl grid-cols-3 gap-3" aria-label="Nextseat highlights">
               {[['02', 'people per room'], ['P2P', 'direct streaming'], ['0', 'uploads stored']].map(([value, label]) => <div key={label} className="dashboard-stat"><span className="text-lg font-semibold text-white">{value}</span><span className="mt-1 text-xs text-slate-500">{label}</span></div>)}
             </div>
+
+            <div className="cinema-scene" aria-hidden="true">
+              <div className="scene-orbit scene-orbit-one" />
+              <div className="scene-orbit scene-orbit-two" />
+              <div className="scene-screen">
+                <div className="scene-screen-glow" />
+                <div className="scene-screen-content"><span>TONIGHT</span><i /><b /><em /></div>
+                <div className="scene-screen-base" />
+              </div>
+              <div className="scene-ticket"><span>YOUR SEAT</span><strong>02</strong><i>✦ &nbsp; ✦ &nbsp; ✦</i></div>
+              <div className="scene-caption"><span className="scene-caption-dot" /> PRIVATE SCREENING <b>•</b> JUST THE TWO OF YOU</div>
+            </div>
           </div>
 
           <section className="dashboard-card mx-auto w-full max-w-lg p-6 sm:p-8" aria-labelledby="start-title">

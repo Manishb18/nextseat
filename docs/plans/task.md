@@ -1,6 +1,5 @@
 | task | status | notes |
 | --- | --- | --- |
-| Add playful welcome quiz before dashboard | complete | Kept the existing Home page intact at /home, added the yes/no teasing flow and facial answer choices, and limited the intro to two browser visits |
 | Keep reactions visible over a shared video | complete | Raised the floating reaction layer above the composited player and stabilized its receiver state callback |
 | Smooth reaction animation origins | complete | Removed dynamic nth-child positioning and replaced it with one stable launch point and transform-only drift |
 | Rebrand the app as Nextseat | complete | Added a custom seat-and-play SVG wordmark, favicon, page title, UI labels, and API title |

@@ -1015,7 +1015,7 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
 
         {/* Connected */}
         {(hasPeer || isStreaming) && (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-4 max-w-4xl mx-auto">
+          <div className={`room-stage flex h-full w-full flex-col items-center justify-center gap-4 mx-auto ${!isStreaming && !peerIsStreaming ? 'max-w-6xl' : 'theater-active max-w-5xl'}`}>
 
             {/* Streamer: local movie player */}
             {isStreaming && movieSrc && (
@@ -1076,10 +1076,32 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
             )}
 
             {!isStreaming && !peerIsStreaming && (
-              <div className="text-center text-gray-500">
-                <p className="text-lg">🟢 {peerName || 'Both people'} connected</p>
-                <p className="text-sm mt-1">Click &ldquo;Share a Movie&rdquo; to start watching</p>
-              </div>
+              <section className="theater-lobby" aria-labelledby="theater-title">
+                <div className="theater-proscenium">
+                  <div className="theater-bulbs" aria-hidden="true">{Array.from({ length: 13 }, (_, i) => <i key={i} />)}</div>
+                  <div className="theater-curtain theater-curtain-left" aria-hidden="true" />
+                  <div className="theater-curtain theater-curtain-right" aria-hidden="true" />
+                  <div className="theater-screen-frame">
+                    <div className="theater-screen-scene">
+                      <div className="theater-screen-stars" aria-hidden="true" />
+                      <div className="theater-screen-copy">
+                        <span className="theater-kicker"><i /> PRIVATE SCREENING <b>·</b> ROOM {code}</span>
+                        <div className="theater-film-icon" aria-hidden="true"><Icon name="film" size={22} /></div>
+                        <h2 id="theater-title">Your theater is ready.</h2>
+                        <p><strong>{peerName || 'Your friend'}</strong> is here. Choose a movie and settle in together.</p>
+                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!movieSupported} className="theater-start-button">
+                          <Icon name="film" size={17} /> Choose a movie <span aria-hidden="true">↗</span>
+                        </button>
+                      </div>
+                      <div className="theater-screen-reflection" aria-hidden="true" />
+                    </div>
+                  </div>
+                  <div className="theater-stage-edge" aria-hidden="true" />
+                  <div className="theater-seats" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} />)}</div>
+                  <div className="theater-aisle-glow" aria-hidden="true" />
+                </div>
+                <div className="theater-lobby-footer"><span className="theater-live-dot" /> {peerName || 'Your friend'} is in their seat <b>·</b> Share a film whenever you’re ready</div>
+              </section>
             )}
 
             {hasPeer && (
@@ -1147,7 +1169,7 @@ function RoomInner({ code, myName, ownerToken }: { code: string; myName: string;
       </main>
 
       {/* Controls + Chat bar */}
-      <div className="flex flex-shrink-0 items-center justify-between border-t border-gray-800 bg-gray-900 px-6 py-2">
+      <div className="theater-controls flex flex-shrink-0 items-center justify-between border-t border-gray-800 bg-gray-900 px-6 py-2">
         <Controls
           cameraOn={cameraOn}
           micOn={micOn}
