@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ..rooms import RateLimited, RoomFull, RoomNotFound, room_manager
+from ..rooms import InviteInvalid, RateLimited, RoomFull, RoomNotFound, room_manager
 from ..services.client_ip import resolve_client_ip
 
 router = APIRouter()
@@ -46,6 +46,9 @@ async def signaling(ws: WebSocket, code: str) -> None:
     owner_token = msg.get("ownerToken", "")
     if not isinstance(owner_token, str) or len(owner_token) > 128:
         owner_token = ""
+    invite_token = msg.get("inviteToken", "")
+    if not isinstance(invite_token, str) or len(invite_token) > 256:
+        invite_token = ""
     ip = resolve_client_ip(
         ws.client.host if ws.client else None,
         ws.headers.get("x-forwarded-for"),
@@ -54,7 +57,7 @@ async def signaling(ws: WebSocket, code: str) -> None:
 
     try:
         peer_id, is_polite, reconnected = room_manager.join_room(
-            code, ws, name, ip, client_id, owner_token
+            code, ws, name, ip, client_id, owner_token, invite_token
         )
     except RoomNotFound:
         try:
@@ -77,6 +80,13 @@ async def signaling(ws: WebSocket, code: str) -> None:
         except Exception:
             pass
         return
+    except InviteInvalid:
+        try:
+            await ws.send_json({"type": "invite-invalid"})
+            await ws.close()
+        except Exception:
+            pass
+        return
 
     # Replace an old socket for a reconnecting client without removing its new slot.
     if previous_peer and previous_peer.ws is not ws:
@@ -95,30 +105,33 @@ async def signaling(ws: WebSocket, code: str) -> None:
         "peers": peers_list,
     })
 
-    other = room_manager.get_other_peer(code, ws)
-    if other:
-        try:
-            event_type = "peer-reconnected" if reconnected else "peer-joined"
-            await other.ws.send_json({"type": event_type, "name": name, "peerId": peer_id})
-        except Exception:
-            pass
+    if room:
+        for other in room.peers:
+            if other.ws is ws:
+                continue
+            try:
+                event_type = "peer-reconnected" if reconnected else "peer-joined"
+                await other.ws.send_json({"type": event_type, "name": name, "peerId": peer_id})
+            except Exception:
+                pass
 
     try:
-        await _relay_messages(ws, code)
+        await _relay_messages(ws, code, peer_id)
     except (WebSocketDisconnect, json.JSONDecodeError):
         pass
     finally:
         removed = room_manager.leave_room(code, ws)
         if removed:
-            other = room_manager.get_other_peer(code, ws)
-            if other:
-                try:
-                    await other.ws.send_json({"type": "peer-left", "peerId": removed.peer_id})
-                except Exception:
-                    pass
+            room = room_manager.get_room(code)
+            if room:
+                for other in room.peers:
+                    try:
+                        await other.ws.send_json({"type": "peer-left", "peerId": removed.peer_id})
+                    except Exception:
+                        pass
 
 
-async def _relay_messages(ws: WebSocket, code: str) -> None:
+async def _relay_messages(ws: WebSocket, code: str, sender_peer_id: str) -> None:
     while True:
         raw = await ws.receive_text()
         msg = json.loads(raw)
@@ -130,12 +143,21 @@ async def _relay_messages(ws: WebSocket, code: str) -> None:
             data = msg.get("data", {})
             if not isinstance(data, dict) or len(raw) > 256_000:
                 continue
-            other = room_manager.get_other_peer(code, ws)
-            if other:
-                try:
-                    await other.ws.send_json({"type": "signal", "data": data})
-                except Exception:
-                    pass
+            target_peer_id = msg.get("targetPeerId")
+            if target_peer_id is None and data.get("type") == "stream-meta":
+                room = room_manager.get_room(code)
+                recipients = [peer for peer in room.peers if peer.peer_id != sender_peer_id] if room else []
+            elif isinstance(target_peer_id, str) and target_peer_id != sender_peer_id:
+                other = room_manager.get_peer_by_id(code, target_peer_id)
+                recipients = [other] if other else []
+            else:
+                recipients = []
+            for other in recipients:
+                if other:
+                    try:
+                        await other.ws.send_json({"type": "signal", "fromPeerId": sender_peer_id, "data": data})
+                    except Exception:
+                        pass
         elif msg_type == "leave":
             return
         elif msg_type == "ping":
@@ -152,3 +174,33 @@ async def _relay_messages(ws: WebSocket, code: str) -> None:
                 except Exception:
                     pass
             return
+        elif msg_type == "kick":
+            target_peer_id = msg.get("targetPeerId")
+            if not isinstance(target_peer_id, str):
+                continue
+            kicked = room_manager.kick_peer(code, ws, target_peer_id)
+            if kicked is None:
+                await ws.send_json({"type": "kick-denied"})
+                continue
+            # Notify the kicked peer and close their socket.
+            try:
+                await kicked.ws.send_json({"type": "kicked"})
+                await kicked.ws.close(code=4003, reason="removed by host")
+            except Exception:
+                pass
+            # Notify remaining peers.
+            room = room_manager.get_room(code)
+            if room:
+                for other in room.peers:
+                    if other.ws is ws:
+                        continue
+                    try:
+                        await other.ws.send_json({"type": "peer-left", "peerId": kicked.peer_id})
+                    except Exception:
+                        pass
+        elif msg_type == "rotate-invite":
+            new_token = room_manager.rotate_invite_token(code, ws)
+            if new_token is None:
+                await ws.send_json({"type": "rotate-denied"})
+                continue
+            await ws.send_json({"type": "invite-rotated", "inviteToken": new_token})

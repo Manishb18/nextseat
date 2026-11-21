@@ -14,7 +14,10 @@ export type SignalingEvent =
   | { type: "room-full" }
   | { type: "room-deleted" }
   | { type: "delete-denied" }
-  | { type: "signal"; data: Record<string, unknown> }
+  | { type: "invite-invalid" }
+  | { type: "kicked" }
+  | { type: "invite-rotated"; inviteToken: string }
+  | { type: "signal"; fromPeerId: string; data: Record<string, unknown> }
   | { type: "error"; message: string };
 
 type Listener = (event: SignalingEvent) => void;
@@ -25,6 +28,7 @@ export class SignalingClient {
   private code = '';
   private name = '';
   private ownerToken = '';
+  private inviteToken = '';
   private clientId = crypto.randomUUID();
   private retryTimer: number | null = null;
   private heartbeatTimer: number | null = null;
@@ -32,10 +36,11 @@ export class SignalingClient {
   private stopped = true;
 
   /** Connect to the signaling server for a room code. */
-  connect(code: string, name: string, ownerToken = ''): void {
+  connect(code: string, name: string, ownerToken = '', inviteToken = ''): void {
     this.code = code;
     this.name = name;
     this.ownerToken = ownerToken;
+    this.inviteToken = inviteToken;
     this.stopped = false;
     this.retryAttempt = 0;
     if (this.heartbeatTimer !== null) window.clearInterval(this.heartbeatTimer);
@@ -62,7 +67,7 @@ export class SignalingClient {
 
     socket.onopen = () => {
       if (this.ws !== socket || this.stopped) return;
-      socket.send(JSON.stringify({ type: "join", name: this.name, clientId: this.clientId, ownerToken: this.ownerToken }));
+      socket.send(JSON.stringify({ type: "join", name: this.name, clientId: this.clientId, ownerToken: this.ownerToken, inviteToken: this.inviteToken }));
     };
 
     socket.onmessage = (event) => {
@@ -72,6 +77,7 @@ export class SignalingClient {
         if (msg.type === 'joined') this.retryAttempt = 0;
         if (msg.type === 'room-deleted') this.stopped = true;
         if (msg.type === 'room-full' || msg.type === 'error') this.stopped = true;
+        if (msg.type === 'invite-invalid' || msg.type === 'kicked') this.stopped = true;
         this.listeners.forEach((fn) => fn(msg));
       } catch {
         // Ignore malformed messages
@@ -115,10 +121,10 @@ export class SignalingClient {
   }
 
   /** Send a signaling message (SDP offer/answer or ICE candidate). */
-  sendSignal(data: Record<string, unknown>): void {
+  sendSignal(data: Record<string, unknown>, targetPeerId?: string): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     try {
-      this.ws.send(JSON.stringify({ type: "signal", data }));
+      this.ws.send(JSON.stringify({ type: "signal", ...(targetPeerId ? { targetPeerId } : {}), data }));
     } catch {
       // A socket can close between the readyState check and send().
     }
@@ -129,6 +135,28 @@ export class SignalingClient {
     if (this.ws?.readyState !== WebSocket.OPEN) return false;
     try {
       this.ws.send(JSON.stringify({ type: 'delete-room' }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Ask the server to remove a participant; only the host may kick. */
+  kickPeer(targetPeerId: string): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    try {
+      this.ws.send(JSON.stringify({ type: 'kick', targetPeerId }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Ask the server to rotate the invite token; only the host may do this. */
+  rotateInvite(): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    try {
+      this.ws.send(JSON.stringify({ type: 'rotate-invite' }));
       return true;
     } catch {
       return false;

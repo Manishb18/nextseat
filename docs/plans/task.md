@@ -1,5 +1,9 @@
 | task | status | notes |
 | --- | --- | --- |
+| Pre-launch: longer invite token (24-char URL-safe secret) | complete | Added invite_token to Room dataclass; join requires correct token; shareable link uses ?t=<token> |
+| Pre-launch: host kick and rotate-invite controls | complete | Backend kick_peer + rotate_invite_token; signaling handles kick/rotate-invite messages; frontend kick button + 🔄 New invite button |
+| Pre-launch: set MAX_ROOM_PARTICIPANTS = 2 | complete | Changed from 5 → 2 per PRD two-person experience; Home.tsx hero stats updated to '02' |
+| Pre-launch: ToS footer + streamer tab-visibility warning | complete | Footer ToS one-liner added; visibilitychange listener shows ⚠️ toast when streamer switches tabs |
 | Keep reactions visible over a shared video | complete | Raised the floating reaction layer above the composited player and stabilized its receiver state callback |
 | Smooth reaction animation origins | complete | Removed dynamic nth-child positioning and replaced it with one stable launch point and transform-only drift |
 | Rebrand the app as Nextseat | complete | Added a custom seat-and-play SVG wordmark, favicon, page title, UI labels, and API title |

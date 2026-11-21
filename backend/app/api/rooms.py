@@ -21,4 +21,8 @@ async def create_room(request: Request) -> dict:
         return JSONResponse({"error": "rate_limited"}, status_code=429)
 
     room = room_manager.get_room(code)
-    return {"code": code, "ownerToken": room.owner_token if room else ""}
+    return {
+        "code": code,
+        "ownerToken": room.owner_token if room else "",
+        "inviteToken": room.invite_token if room else "",
+    }
